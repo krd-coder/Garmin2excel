@@ -326,7 +326,7 @@ def main():
                 "startRowIndex": start_w - 1,
                 "endRowIndex": end_w,
                 "startColumnIndex": 0,
-                "endColumnIndex": 24  # Od A do U
+                "endColumnIndex": 22  # Od A do U
             }
 
             # =========================================================
