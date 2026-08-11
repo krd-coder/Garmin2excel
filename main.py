@@ -367,13 +367,12 @@ def main():
             bialy = {"red": 1.0, "green": 1.0, "blue": 1.0}
             czarny = {"red": 0.0, "green": 0.0, "blue": 0.0}
             
-            # ZMIANA: endColumnIndex na 22 (obejmuje kolumny od A do V)
             zakres_pelny = {
                 "sheetId": sheet.id,
                 "startRowIndex": start_w - 1, 
                 "endRowIndex": end_w,         
                 "startColumnIndex": 0,        
-                "endColumnIndex": 22 
+                "endColumnIndex": 24 
             }
 
             requests.append({
