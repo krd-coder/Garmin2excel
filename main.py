@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import gspread
 import dotenv
@@ -17,6 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN_DIR = "./.garmin_tokens"
+WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
 
 def get_garmin_client():
@@ -112,8 +114,8 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
 def main():
     logger.info("Rozpoczęcie procesu synchronizacji (Kolejność: Chronologiczna, z góry na dół)...")
 
-    # 1. Obliczamy daty
-    dzis = datetime.now().date()
+    # 1. Obliczamy daty (wg czasu warszawskiego, niezależnie od strefy czasowej serwera)
+    dzis = datetime.now(WARSAW_TZ).date()
     dzis_str = dzis.strftime("%Y-%m-%d")
     wczoraj = dzis - timedelta(days=1)
     wczoraj_str = wczoraj.strftime("%Y-%m-%d")
