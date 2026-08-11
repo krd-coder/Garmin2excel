@@ -362,10 +362,11 @@ def main():
                     }
                 })
 
-            dodaj_pionowa(2)   # Oddziela Plan od Dziennych Statystyk (między C i D)
-            dodaj_pionowa(7)   # Oddziela Dzienne Statystyki od Treningów (między H i I)
-            dodaj_pionowa(14)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między O i P)
-            dodaj_pionowa(19)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
+            dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między C i D)
+            dodaj_pionowa(8)   # Oddziela Dzienne Statystyki od Treningów (między H i I)
+            dodaj_pionowa(15)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między O i P)
+            dodaj_pionowa(20)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
+            dodaj_pionowa(21)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
