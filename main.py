@@ -220,14 +220,16 @@ def main():
         sheet_id = os.environ.get("SHEET_ID")
         sheet = gc.open_by_key(sheet_id).sheet1
         
+# Odczytujemy zapamiętane plany ZANIM cokolwiek zmienimy
         wszystkie_dane = sheet.get_all_values()
         plany_dzienne = {}
         for r_data in wszystkie_dane:
-            if len(r_data) >= 3:
+            if len(r_data) >= 4: # Teraz czytamy do 4. kolumny (indeks 3)
                 r_date = r_data[1]
-                r_plan = r_data[2]
-                if r_date and r_plan.strip() and r_date not in plany_dzienne:
-                    plany_dzienne[r_date] = r_plan
+                r_plan_typ = r_data[2] # Nowa kolumna C
+                r_plan_opis = r_data[3] # Nowa kolumna D
+                if r_date and (r_plan_typ.strip() or r_plan_opis.strip()) and r_date not in plany_dzienne:
+                    plany_dzienne[r_date] = (r_plan_typ, r_plan_opis)
     except Exception as e:
         logger.error(f"Błąd łączenia z arkuszem: {e}")
         return
@@ -279,8 +281,10 @@ def main():
             
         plan_treningu = plany_dzienne.get(data_aktywnosci, "")
         
+        plan_typ, plan_opis = plany_dzienne.get(data_aktywnosci, ("", ""))
+        
         row = [
-            activity_id, data_aktywnosci, plan_treningu, hrv, rhr, t_kcal, a_kcal, b_kcal, act_type, 
+            activity_id, data_aktywnosci, plan_typ, plan_opis, hrv, rhr, t_kcal, a_kcal, b_kcal, act_type, 
             distance_km, duration_min, tempo_str, avg_hr, max_hr, 
             pasek_hr, z1, z2, z3, z4, z5, exact_date
         ]
@@ -349,13 +353,14 @@ def main():
         
         if len(wiersze_w_arkuszu) > 1:
             logger.info(f"Scalanie dla {data_str}: wiersze od {start_w} do {end_w}.")
-            sheet.merge_cells(f"B{start_w}:B{end_w}")  
-            sheet.merge_cells(f"C{start_w}:C{end_w}")  
-            sheet.merge_cells(f"D{start_w}:D{end_w}")  
-            sheet.merge_cells(f"E{start_w}:E{end_w}")  
-            sheet.merge_cells(f"F{start_w}:F{end_w}")  
-            sheet.merge_cells(f"G{start_w}:G{end_w}")  
-            sheet.merge_cells(f"H{start_w}:H{end_w}")  
+            sheet.merge_cells(f"B{start_w}:B{end_w}")  # Data
+            sheet.merge_cells(f"C{start_w}:C{end_w}")  # Plan Typ
+            sheet.merge_cells(f"D{start_w}:D{end_w}")  # Plan Opis
+            sheet.merge_cells(f"E{start_w}:E{end_w}")  # HRV
+            sheet.merge_cells(f"F{start_w}:F{end_w}")  # RHR
+            sheet.merge_cells(f"G{start_w}:G{end_w}")  # Kcal Total
+            sheet.merge_cells(f"H{start_w}:H{end_w}")  # Kcal Active
+            sheet.merge_cells(f"I{start_w}:I{end_w}")  # Kcal BMR 
 
         try:
             requests = []
@@ -410,10 +415,10 @@ def main():
                     }
                 })
 
-            dodaj_pionowa(2)   # Oddziela Plan od Dziennych Statystyk (między C i D)
-            dodaj_pionowa(7)   # Oddziela Dzienne Statystyki od Treningów (między H i I)
-            dodaj_pionowa(14)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między O i P)
-            dodaj_pionowa(19)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
+            dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między C i D)
+            dodaj_pionowa(8)   # Oddziela Dzienne Statystyki od Treningów (między H i I)
+            dodaj_pionowa(15)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między O i P)
+            dodaj_pionowa(20)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
