@@ -303,7 +303,7 @@ def main():
                 
         if docelowy_wiersz:
             logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
-            sheet.batch_update([{'range': f"A{docelowy_wiersz}:U{docelowy_wiersz}", 'values': [row]}])
+            sheet.batch_update([{'range': f"A{docelowy_wiersz}:V{docelowy_wiersz}", 'values': [row]}])
         else:
             insert_idx = len(wszystkie_dane) + 1 
             
@@ -311,7 +311,7 @@ def main():
                 row_idx = i + 1
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
-                r_exact = r_data[20] if len(r_data) > 20 else "" 
+                r_exact = r_data[20] if len(r_data) > 21 else "" 
                 
                 if not r_date:
                     continue
@@ -367,18 +367,15 @@ def main():
             bialy = {"red": 1.0, "green": 1.0, "blue": 1.0}
             czarny = {"red": 0.0, "green": 0.0, "blue": 0.0}
             
-            # Definiujemy zakres obejmujący cały dany dzień
+            # ZMIANA: endColumnIndex na 22 (obejmuje kolumny od A do V)
             zakres_pelny = {
                 "sheetId": sheet.id,
                 "startRowIndex": start_w - 1, 
                 "endRowIndex": end_w,         
                 "startColumnIndex": 0,        
-                "endColumnIndex": 21 # Od A do U
+                "endColumnIndex": 22 
             }
 
-            # =========================================================
-            # NOWOŚĆ: 0. Wyśrodkowanie w pionie i poziomie całego bloku
-            # =========================================================
             requests.append({
                 "repeatCell": {
                     "range": zakres_pelny,
@@ -392,7 +389,16 @@ def main():
                 }
             })
             
-            # 2. Gruba pozioma czarna kreska na samym dole bloku
+            requests.append({
+                "updateBorders": {
+                    "range": zakres_pelny,
+                    "innerHorizontal": {"style": "SOLID", "color": bialy},
+                    "innerVertical": {"style": "SOLID", "color": bialy},
+                    "left": {"style": "SOLID", "color": bialy},
+                    "right": {"style": "SOLID", "color": bialy}
+                }
+            })
+            
             requests.append({
                 "updateBorders": {
                     "range": zakres_pelny,
@@ -400,7 +406,6 @@ def main():
                 }
             })
             
-            # 3. Grube pionowe linie dzielące logiczne sekcje
             def dodaj_pionowa(kolumna_indeks):
                 requests.append({
                     "updateBorders": {
@@ -415,10 +420,11 @@ def main():
                     }
                 })
 
-            dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między C i D)
-            dodaj_pionowa(8)   # Oddziela Dzienne Statystyki od Treningów (między H i I)
-            dodaj_pionowa(15)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między O i P)
-            dodaj_pionowa(20)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
+            # Zaktualizowane pozycje pionowych linii dla nowego układu z dwiema kolumnami planu:
+            dodaj_pionowa(3)   # Między D i E (Oddziela Plan od Statystyk)
+            dodaj_pionowa(8)   # Między I i J (Oddziela Statystyki od Treningu)
+            dodaj_pionowa(15)  # Między P i Q (Oddziela Trening od Stref Tętna)
+            dodaj_pionowa(20)  # Między U i V (Oddziela Strefy od Ukrytej Daty)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
