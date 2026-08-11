@@ -173,13 +173,17 @@ def main():
         sheet = gc.open_by_key(sheet_id).sheet1
 
         wszystkie_dane = sheet.get_all_values()
-        plany_dzienne = {}
+        plany_dzienne1 = {}
+        plany_dzienne2 = {}
         for r_data in wszystkie_dane:
             if len(r_data) >= 3:
                 r_date = r_data[1]
-                r_plan = r_data[2]
-                if r_date and r_plan.strip() and r_date not in plany_dzienne:
-                    plany_dzienne[r_date] = r_plan
+                r_plan1 = r_data[2]
+                r_plan2 = r_data[3] if len(r_data) > 3 else ""
+                if r_date and r_plan1.strip() and r_date not in plany_dzienne1:
+                    plany_dzienne1[r_date] = r_plan1
+                if r_date and r_plan2.strip() and r_date not in plany_dzienne2:
+                    plany_dzienne2[r_date] = r_plan2
     except Exception as e:
         logger.error(f"Błąd łączenia z arkuszem: {e}")
         return
@@ -229,10 +233,11 @@ def main():
             z1 = z2 = z3 = z4 = z5 = ""
             tempo_str = "-"
 
-        plan_treningu = plany_dzienne.get(data_aktywnosci, "")
+        plan_treningu1 = plany_dzienne1.get(data_aktywnosci, "")
+        plan_treningu2 = plany_dzienne2.get(data_aktywnosci, "")
 
         row = [
-            activity_id, data_aktywnosci, plan_treningu, hrv, rhr, t_kcal, a_kcal, b_kcal, act_type,
+            activity_id, data_aktywnosci, plan_treningu1, plan_treningu2, hrv, rhr, t_kcal, a_kcal, b_kcal, act_type,
             distance_km, duration_min, tempo_str, avg_hr, max_hr,
             pasek_hr, z1, z2, z3, z4, z5, exact_date
         ]
