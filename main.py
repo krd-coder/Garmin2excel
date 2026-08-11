@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright_stealth import Stealth
 import gspread
 import dotenv
 
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class GarminSessionExpiredError(RuntimeError):
-    """Sesja z garmin_state.json wygasła lub jest nieprawidłowa."""
+    """Sesja z garmin_state.json wygasła, jest nieprawidłowa, albo Garmin zablokował requesta jako bota."""
 
 
 def fetch_garmin_data(wczoraj_str, dzis_str, limit=20):
@@ -26,12 +27,12 @@ def fetch_garmin_data(wczoraj_str, dzis_str, limit=20):
         dzis_str: {"hrv": "Brak", "rhr": "Brak", "total_kcal": "Brak", "active_kcal": "Brak", "bmr_kcal": "Brak"}
     }
     
-    with sync_playwright() as p:
+    with Stealth().use_sync(sync_playwright()) as p:
         browser = p.chromium.launch(headless=True)
         try:
             context = browser.new_context(storage_state="garmin_state.json")
             page = context.new_page()
-            
+
             logger.info("Ładowanie panelu aktywności...")
 
             # 1. Przechwytywanie treningów
@@ -52,7 +53,13 @@ def fetch_garmin_data(wczoraj_str, dzis_str, limit=20):
                     "Garmin nie odpowiedział w ciągu 30s przy pobieraniu aktywności — "
                     "sesja w garmin_state.json może być nieprawidłowa."
                 )
-            
+            except json.JSONDecodeError:
+                raise GarminSessionExpiredError(
+                    "Garmin odpowiedział statusem 200, ale bez danych JSON — "
+                    "prawdopodobnie zablokował requesta jako bota."
+                )
+
+
             recent_activities = [
                 act for act in activities 
                 if act.get('startTimeLocal', '').startswith(wczoraj_str) or act.get('startTimeLocal', '').startswith(dzis_str)
