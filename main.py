@@ -256,7 +256,7 @@ def main():
 
         if docelowy_wiersz:
             logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
-            sheet.batch_update([{'range': f"A{docelowy_wiersz}:U{docelowy_wiersz}", 'values': [row]}])
+            sheet.batch_update([{'range': f"A{docelowy_wiersz}:V{docelowy_wiersz}", 'values': [row]}])
         else:
             insert_idx = len(wszystkie_dane) + 1
 
@@ -325,7 +325,7 @@ def main():
                 "startRowIndex": start_w - 1,
                 "endRowIndex": end_w,
                 "startColumnIndex": 0,
-                "endColumnIndex": 21  # Od A do U
+                "endColumnIndex": 24  # Od A do U
             }
 
             # =========================================================
