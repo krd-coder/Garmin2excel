@@ -1,4 +1,4 @@
-playwright==1.62.0
-playwright-stealth==2.0.3
+garminconnect==0.3.10
+garth==0.8.0
 gspread==6.2.1
 python-dotenv==1.2.2

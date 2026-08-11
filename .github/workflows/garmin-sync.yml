@@ -17,16 +17,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restore Garmin session cache
+        uses: actions/cache@v4
+        with:
+          path: .garmin_tokens
+          key: garmin-tokens-${{ github.run_id }}
+          restore-keys: |
+            garmin-tokens-
+
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Install Playwright browser
-        run: playwright install --with-deps chromium
-
-      - name: Write Garmin session state
-        env:
-          GARMIN_STATE_JSON: ${{ secrets.GARMIN_STATE_JSON }}
-        run: echo "$GARMIN_STATE_JSON" > garmin_state.json
 
       - name: Write Google service-account credentials
         env:
@@ -35,5 +35,7 @@ jobs:
 
       - name: Run sync
         env:
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python main.py
