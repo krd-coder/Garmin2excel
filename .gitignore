@@ -1,0 +1,19 @@
+# Virtual environments
+venv/
+.venv/
+
+# Secrets / credentials
+.env
+.garmin_tokens/
+credentials.json
+garmin_state.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

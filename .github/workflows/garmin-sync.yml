@@ -1,0 +1,39 @@
+name: Garmin to Google Sheets sync
+
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
+      - name: Write Garmin session state
+        env:
+          GARMIN_STATE_JSON: ${{ secrets.GARMIN_STATE_JSON }}
+        run: echo "$GARMIN_STATE_JSON" > garmin_state.json
+
+      - name: Write Google service-account credentials
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: echo "$GOOGLE_CREDENTIALS" > credentials.json
+
+      - name: Run sync
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python main.py
