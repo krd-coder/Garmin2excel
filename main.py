@@ -179,7 +179,7 @@ def main():
             if len(r_data) >= 3:
                 r_date = r_data[1]
                 r_plan1 = r_data[2]
-                r_plan2 = r_data[3] if len(r_data) > 3 else ""
+                r_plan2 = r_data[3]
                 if r_date and r_plan1.strip() and r_date not in plany_dzienne1:
                     plany_dzienne1[r_date] = r_plan1
                 if r_date and r_plan2.strip() and r_date not in plany_dzienne2:
@@ -313,6 +313,7 @@ def main():
             sheet.merge_cells(f"F{start_w}:F{end_w}")
             sheet.merge_cells(f"G{start_w}:G{end_w}")
             sheet.merge_cells(f"H{start_w}:H{end_w}")
+            sheet.merge_cells(f"I{start_w}:I{end_w}")
 
         try:
             requests = []
