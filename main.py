@@ -142,7 +142,7 @@ def fetch_garmin_data(client, daty_list, limit=20):
 def main():
     logger.info("Synchronizacja: 3 dni wstecz.")
     dzis = datetime.now(WARSAW_TZ).date()
-    daty_do_pobrania = [(dzis - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)] # [dzis, wczoraj, przedwczoraj]
+    daty_do_pobrania = [(dzis - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(42)] # [dzis, wczoraj, przedwczoraj]
 
     try:
         client = get_garmin_client()
@@ -186,7 +186,7 @@ def main():
 
     aktywnosci_do_dodania = [
         act for act in activities
-        if act.get('startTimeLocal', '').startswith(daty_do_pobrania[0]) or act.get('startTimeLocal', '').startswith(daty_do_pobrania[1]) or act.get('startTimeLocal', '').startswith(daty_do_pobrania[2])
+        if any(act.get('startTimeLocal', '').startswith(d) for d in daty_do_pobrania)
     ]
 
     aktywnosci_do_dodania.sort(key=lambda act: act.get('startTimeLocal', ''))
