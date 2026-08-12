@@ -60,8 +60,8 @@ def oblicz_fizjologie(wszystkie_dane, dzis):
         obciazenie = historia[data]["load"]
         
         # Wzory wykładniczej średniej kroczącej (EWMA) stosowane w kolarstwie i bieganiu
-        ctl = ctl + (obciazenie - ctl) / 42.0
-        atl = atl + (obciazenie - atl) / 7.0
+        ctl = ctl + (obciazenie - ctl) / min(42.0, len(posortowane_daty))
+        atl = atl + (obciazenie - atl) / min(7.0, len(posortowane_daty))  # Ograniczamy do 7 dni dla ATL
         
         hrv = historia[data]["hrv"]
         if hrv:
