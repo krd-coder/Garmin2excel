@@ -60,23 +60,12 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
         except Exception as e:
             logger.warning(f"Nie udało się pobrać podsumowania dnia dla {data_badania}: {e}")
 
-        # NOWOŚĆ: Sumowanie Garmin Load dla danego dnia ze wszystkich aktywności
-        dzienne_load = 0.0
-        znaleziono_load = False
-        
-        for act in activities:
-            if act.get('startTimeLocal', '').startswith(data_badania):
-                load = act.get('trainingLoad')
-                if load is not None:
-                    dzienne_load += float(load)
-                    znaleziono_load = True
-                    
-        g_load_str = str(round(dzienne_load)) if znaleziono_load else "0"
-
+        # Przygotowujemy pole na load z wartością domyślną 0.0
         dzienne_statystyki[data_badania] = {
             "hrv": hrv_summary,
             "rhr": rhr,
-            "garmin_load": g_load_str,
+            "garmin_load": 0.0,
+            "znaleziono_load": False,
             "total_kcal": total_kcal,
             "active_kcal": active_kcal,
             "bmr_kcal": bmr_kcal,
@@ -90,7 +79,12 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
     hr_zones_dict = {}
     for act in recent_activities:
         act_id = str(act['activityId'])
+        exact_date = act.get('startTimeLocal', '')
+        data_aktywnosci = exact_date[:10]
         logger.info(f"Pobieranie szczegółów treningu {act_id}...")
+
+        # Pierwsza próba: Szukamy obciążenia w głównej liście (pod różnymi nazwami kluczy)
+        load = act.get('activityTrainingLoad') or act.get('trainingLoad') or 0.0
 
         z1 = z2 = z3 = z4 = z5 = 0.0
         pasek_hr = "Nie" 
@@ -111,6 +105,11 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
 
         try:
             act_details = client.get_activity(act_id)
+            
+            # DRUGA PRÓBA: Jeśli główna lista nic nie dała, wyciągamy load prosto z detali treningu!
+            if not load:
+                load = act_details.get('activityTrainingLoad') or act_details.get('trainingLoad') or 0.0
+                
             czujniki = act_details.get("metadata", {}).get("sensors", [])
             for czujnik in czujniki:
                 dane_czujnika = str(czujnik).upper()
@@ -118,9 +117,22 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
                     pasek_hr = "Tak"
                     break
         except Exception as e:
-            logger.warning(f"Nie udało się pobrać czujników dla {act_id}: {e}")
+            logger.warning(f"Nie udało się pobrać czujników/szczegółów dla {act_id}: {e}")
+
+        # Jeśli jakkolwiek udało się znaleźć load (większy niż 0), dodajemy go do sumy dnia
+        if load and float(load) > 0:
+            if data_aktywnosci in dzienne_statystyki:
+                dzienne_statystyki[data_aktywnosci]["garmin_load"] += float(load)
+                dzienne_statystyki[data_aktywnosci]["znaleziono_load"] = True
 
         hr_zones_dict[act_id] = [z1, z2, z3, z4, z5, pasek_hr]
+
+    # Formatowanie wyniku na koniec (żeby był gotowy do wstawienia do Excela)
+    for data_badania in [wczoraj_str, dzis_str]:
+        if dzienne_statystyki[data_badania]["znaleziono_load"]:
+            dzienne_statystyki[data_badania]["garmin_load"] = str(round(dzienne_statystyki[data_badania]["garmin_load"]))
+        else:
+            dzienne_statystyki[data_badania]["garmin_load"] = "0"
 
     return activities, dzienne_statystyki, hr_zones_dict
 
