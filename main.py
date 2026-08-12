@@ -274,12 +274,14 @@ def main():
         plan_treningu1 = plany_dzienne1.get(data_aktywnosci, "")
         plan_treningu2 = plany_dzienne2.get(data_aktywnosci, "")
 
+        trimp = z1 * 1 + z2 * 2 + z3 * 3 + z4 * 4 + z5 * 5
+
         # NOWOŚĆ: Zaktualizowany układ kolumn (K=BodyBat, L=Stress)
         row = [
             activity_id, data_aktywnosci, plan_treningu1, plan_treningu2, 
             hrv, rhr, g_load, t_kcal, a_kcal, b_kcal, body_bat, stress, act_type,
             distance_km, duration_min, tempo_str, avg_hr, max_hr,
-            pasek_hr, aero_te, anaero_te, z1, z2, z3, z4, z5, exact_date
+            pasek_hr, aero_te, anaero_te, z1, z2, z3, z4, z5, exact_date, trimp
         ]
 
         docelowy_wiersz = None
@@ -304,7 +306,7 @@ def main():
             else:
                 logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
             # NOWOŚĆ: Zakres rozszerzony do kolumny X
-            sheet.batch_update([{'range': f"A{docelowy_wiersz}:AA{docelowy_wiersz}", 'values': [row]}])
+            sheet.batch_update([{'range': f"A{docelowy_wiersz}:AB{docelowy_wiersz}", 'values': [row]}])
         else:
             # ... (reszta kodu bez zmian) ...
             insert_idx = len(wszystkie_dane) + 1
@@ -370,7 +372,7 @@ def main():
                 "startRowIndex": start_w - 1,
                 "endRowIndex": end_w,
                 "startColumnIndex": 0,
-                "endColumnIndex": 27  # A do AA (27 kolumn)
+                "endColumnIndex": 28  # A do AB (28 kolumn)
             }
 
             requests.append({
