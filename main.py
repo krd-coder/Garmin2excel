@@ -159,13 +159,9 @@ def main():
         if act.get('startTimeLocal', '').startswith(wczoraj_str) or act.get('startTimeLocal', '').startswith(dzis_str)
     ]
 
-    if not aktywnosci_do_dodania:
-        logger.info("Brak jakichkolwiek danych do dodania.")
-        return
-
     aktywnosci_do_dodania.sort(key=lambda act: act.get('startTimeLocal', ''))
 
-    logger.info(f"Znaleziono {len(aktywnosci_do_dodania)} wpisów z wczoraj i dzisiaj.")
+    logger.info(f"Przetwarzanie {len(aktywnosci_do_dodania)} wpisów z wczoraj i dzisiaj...")
 
     try:
         logger.info("Łączenie z Google Sheets...")
@@ -181,7 +177,7 @@ def main():
             if len(r_data) >= 3:
                 r_date = r_data[1]
                 r_plan1 = r_data[2]
-                r_plan2 = r_data[3]
+                r_plan2 = r_data[3] if len(r_data) >= 4 else ""
                 if r_date and r_plan1.strip() and r_date not in plany_dzienne1:
                     plany_dzienne1[r_date] = r_plan1
                 if r_date and r_plan2.strip() and r_date not in plany_dzienne2:
@@ -195,9 +191,13 @@ def main():
         existing_ids = [r[0] if len(r) > 0 else "" for r in wszystkie_dane]
 
         activity_id = str(activity.get('activityId'))
+        
+        # =====================================================================
+        # NOWOŚĆ: Zamiast pomijać istniejący trening, zapamiętujemy, że istnieje!
+        # =====================================================================
+        is_existing_workout = False
         if activity_id in existing_ids and not activity_id.startswith("REST_"):
-            logger.info(f"Wpis {activity_id} już istnieje w arkuszu. Pomijam.")
-            continue
+            is_existing_workout = True
 
         exact_date = activity.get('startTimeLocal', '')
         data_aktywnosci = exact_date[:10]
@@ -245,19 +245,28 @@ def main():
         ]
 
         docelowy_wiersz = None
-        for i, r_data in enumerate(wszystkie_dane):
-            row_idx = i + 1
-            if row_idx <= 1:
-                continue
-            r_id = r_data[0] if len(r_data) > 0 else ""
-            r_date = r_data[1] if len(r_data) > 1 else ""
+        
+        # Jeśli to już istniejący trening z Garmina, znajdujemy jego własny wiersz do nadpisania
+        if is_existing_workout:
+            docelowy_wiersz = existing_ids.index(activity_id) + 1
+        else:
+            # Szukamy pustego planu lub REST-a do nadpisania
+            for i, r_data in enumerate(wszystkie_dane):
+                row_idx = i + 1
+                if row_idx <= 1:
+                    continue
+                r_id = r_data[0] if len(r_data) > 0 else ""
+                r_date = r_data[1] if len(r_data) > 1 else ""
 
-            if r_date == data_aktywnosci and (r_id == "" or r_id.startswith("REST_")):
-                docelowy_wiersz = row_idx
-                break
+                if r_date == data_aktywnosci and (r_id == "" or r_id.startswith("REST_")):
+                    docelowy_wiersz = row_idx
+                    break
 
         if docelowy_wiersz:
-            logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
+            if is_existing_workout:
+                logger.info(f"Odświeżanie statystyk dla istniejącego treningu {activity_id} (wiersz {docelowy_wiersz}).")
+            else:
+                logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
             sheet.batch_update([{'range': f"A{docelowy_wiersz}:V{docelowy_wiersz}", 'values': [row]}])
         else:
             insert_idx = len(wszystkie_dane) + 1
@@ -266,7 +275,9 @@ def main():
                 row_idx = i + 1
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
-                r_exact = r_data[20] if len(r_data) > 20 else ""
+                
+                # POPRAWKA: Ukryta data jest pod indeksem 21 (Kolumna V)
+                r_exact = r_data[21] if len(r_data) > 21 else ""
 
                 if not r_date:
                     continue
@@ -277,7 +288,6 @@ def main():
                     insert_idx = row_idx
                     break
 
-            # NOWOŚĆ: Wykrywamy, czy wstawiamy na sam koniec arkusza (poza jego aktualne ramy)
             if insert_idx > len(wszystkie_dane):
                 logger.info(f"Dopisywanie nowego wiersza {activity_id} na samym dole arkusza...")
                 sheet.append_row(row)
@@ -322,18 +332,14 @@ def main():
             bialy = {"red": 1.0, "green": 1.0, "blue": 1.0}
             czarny = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
-            # Definiujemy zakres obejmujący cały dany dzień
             zakres_pelny = {
                 "sheetId": sheet.id,
                 "startRowIndex": start_w - 1,
                 "endRowIndex": end_w,
                 "startColumnIndex": 0,
-                "endColumnIndex": 22  # Od A do U
+                "endColumnIndex": 22  # Od A do V
             }
 
-            # =========================================================
-            # NOWOŚĆ: 0. Wyśrodkowanie w pionie i poziomie całego bloku
-            # =========================================================
             requests.append({
                 "repeatCell": {
                     "range": zakres_pelny,
@@ -347,7 +353,6 @@ def main():
                 }
             })
 
-            # 2. Gruba pozioma czarna kreska na samym dole bloku
             requests.append({
                 "updateBorders": {
                     "range": zakres_pelny,
@@ -355,7 +360,6 @@ def main():
                 }
             })
 
-            # 3. Grube pionowe linie dzielące logiczne sekcje
             def dodaj_pionowa(kolumna_indeks):
                 requests.append({
                     "updateBorders": {
@@ -370,11 +374,11 @@ def main():
                     }
                 })
 
-            dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między C i D)
-            dodaj_pionowa(8)   # Oddziela Dzienne Statystyki od Treningów (między H i I)
-            dodaj_pionowa(15)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między O i P)
-            dodaj_pionowa(20)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
-            dodaj_pionowa(21)  # Oddziela Strefy Tętna od Ukrytej Daty (między T i U)
+            # Uporządkowane linie pionowe!
+            dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między D i E)
+            dodaj_pionowa(8)   # Oddziela Dzienne Statystyki od Treningów (między I i J)
+            dodaj_pionowa(15)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między P i Q)
+            dodaj_pionowa(20)  # Oddziela Strefy Tętna od Ukrytej Daty (między U i V)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
