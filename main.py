@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 TOKEN_DIR = "./.garmin_tokens"
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
-
 def get_garmin_client():
     email = os.getenv("GARMIN_EMAIL")
     password = os.getenv("GARMIN_PASSWORD")
@@ -28,13 +27,12 @@ def get_garmin_client():
     client.login(tokenstore=TOKEN_DIR)
     return client
 
-
-def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
+def fetch_garmin_data(client, daty_list, limit=20):
     import json
     activities = client.get_activities(0, limit)
 
     dzienne_statystyki = {}
-    for data_badania in [wczoraj_str, dzis_str]:
+    for data_badania in daty_list:
         hrv_summary = "Brak"
         rhr = "Brak"
         total_kcal = "Brak"
@@ -60,8 +58,6 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
             total_kcal = summary.get('totalKilocalories', "Brak")
             active_kcal = summary.get('activeKilocalories', "Brak")
             bmr_kcal = summary.get('bmrKilocalories', "Brak")
-            
-            # NOWOŚĆ: Wyciągamy średni stres i Body Battery z podsumowania dnia
             avg_stress = summary.get('averageStressLevel', "Brak")
             body_battery_min = summary.get('bodyBatteryLowestValue', "Brak")
         except Exception as e:
@@ -79,27 +75,23 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
             "body_battery_min": body_battery_min
         }
 
+    # Pobieramy aktywności z całego zakresu dat
     recent_activities = [
         act for act in activities
-        if act.get('startTimeLocal', '').startswith(wczoraj_str) or act.get('startTimeLocal', '').startswith(dzis_str)
+        if any(act.get('startTimeLocal', '').startswith(d) for d in daty_list)
     ]
 
     hr_zones_dict = {}
-    
-    # Słownik do podpięcia dodatkowych metryk treningowych (TE, Stres itp.)
     activity_extra_metrics = {}
 
     for act in recent_activities:
         act_id = str(act['activityId'])
         exact_date = act.get('startTimeLocal', '')
         data_aktywnosci = exact_date[:10]
-        logger.info(f"Pobieranie szczegółów treningu {act_id}...")
-
-        # Poprawione szukanie load w głównym obiekcie aktywności
+        
         load = act.get('activityTrainingLoad') or act.get('trainingLoad') or 0.0
         aerobic_te = 0.0
         anaerobic_te = 0.0
-
         z1 = z2 = z3 = z4 = z5 = 0.0
         pasek_hr = "Nie" 
 
@@ -114,29 +106,22 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
                     elif zn == 3: z3 = mins
                     elif zn == 4: z4 = mins
                     elif zn == 5: z5 = mins
-        except Exception as e:
-            logger.warning(f"Nie udało się pobrać stref tętna dla {act_id}: {e}")
+        except: pass
 
         try:
             act_details = client.get_activity(act_id)
-            
-            # Prawidłowa ścieżka do activityTrainingLoad wewnątrz summaryDTO
             summary_dto = act_details.get('summaryDTO', {})
             if not load or load == 0.0:
                 load = summary_dto.get('activityTrainingLoad') or summary_dto.get('trainingLoad') or 0.0
             
-            # Pobieramy Training Effect Aerobowy i Beztlenowy
             aerobic_te = summary_dto.get('trainingEffect', 0.0)
             anaerobic_te = summary_dto.get('anaerobicTrainingEffect', 0.0)
                 
             czujniki = act_details.get("metadata", {}).get("sensors", [])
             for czujnik in czujniki:
-                dane_czujnika = str(czujnik).upper()
-                if "HEART" in dane_czujnika or "HRM" in dane_czujnika or "ANTPLUS" in dane_czujnika:
-                    pasek_hr = "Tak"
-                    break
-        except Exception as e:
-            logger.warning(f"Nie udało się pobrać czujników/szczegółów dla {act_id}: {e}")
+                if "HEART" in str(czujnik).upper() or "HRM" in str(czujnik).upper():
+                    pasek_hr = "Tak"; break
+        except: pass
 
         if load and float(load) > 0:
             if data_aktywnosci in dzienne_statystyki:
@@ -144,33 +129,32 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
                 dzienne_statystyki[data_aktywnosci]["znaleziono_load"] = True
 
         hr_zones_dict[act_id] = [z1, z2, z3, z4, z5, pasek_hr]
-        
-        # Zapisujemy dodatkowe metryki treningowe, żeby wstawić je do arkusza
-        activity_extra_metrics[act_id] = {
-            "aerobic_te": aerobic_te if aerobic_te else "-",
-            "anaerobic_te": anaerobic_te if anaerobic_te else "-"
-        }
+        activity_extra_metrics[act_id] = {"aerobic_te": aerobic_te or "0.0", "anaerobic_te": anaerobic_te or "0.0"}
 
-    for data_badania in [wczoraj_str, dzis_str]:
-        if dzienne_statystyki[data_badania]["znaleziono_load"]:
-            dzienne_statystyki[data_badania]["garmin_load"] = str(round(dzienne_statystyki[data_badania]["garmin_load"]))
+    for d in daty_list:
+        if dzienne_statystyki[d]["znaleziono_load"]:
+            dzienne_statystyki[d]["garmin_load"] = str(round(dzienne_statystyki[d]["garmin_load"]))
         else:
-            dzienne_statystyki[data_badania]["garmin_load"] = "0"
+            dzienne_statystyki[d]["garmin_load"] = "0"
 
     return activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics
 
-
 def main():
-    logger.info("Rozpoczęcie procesu synchronizacji (Kolejność: Chronologiczna, z góry na dół)...")
-
+    logger.info("Synchronizacja: 3 dni wstecz.")
     dzis = datetime.now(WARSAW_TZ).date()
-    dzis_str = dzis.strftime("%Y-%m-%d")
-    wczoraj = dzis - timedelta(days=1)
-    wczoraj_str = wczoraj.strftime("%Y-%m-%d")
+    daty_do_pobrania = [(dzis - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)] # [dzis, wczoraj, przedwczoraj]
 
-    logger.info("Logowanie do Garmin Connect...")
     try:
         client = get_garmin_client()
+        activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics = fetch_garmin_data(client, daty_do_pobrania)
+        
+        # Tworzenie brakujących wpisów REST
+        for check_date in daty_do_pobrania:
+            if not [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]:
+                activities.append({'activityId': f"REST_{check_date}", 'startTimeLocal': f"{check_date} 00:00:00", 'activityName': 'Dzień bez treningu'})
+
+        aktywnosci_do_dodania = [act for act in activities if any(act.get('startTimeLocal', '').startswith(d) for d in daty_do_pobrania)]
+        aktywnosci_do_dodania.sort(key=lambda act: act.get('startTimeLocal', ''))
     except GarminConnectAuthenticationError as e:
         logger.error(f"Błąd autoryzacji Garmina — sprawdź GARMIN_EMAIL/GARMIN_PASSWORD: {e}")
         raise
@@ -181,9 +165,9 @@ def main():
         logger.error(f"Błąd połączenia z Garminem: {e}")
         raise
 
-    activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics = fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20)
+    activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics = fetch_garmin_data(client, daty_do_pobrania, limit=20)
 
-    for check_date in [wczoraj_str, dzis_str]:
+    for check_date in daty_do_pobrania:
         acts_for_date = [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]
 
         if not acts_for_date:
@@ -202,7 +186,7 @@ def main():
 
     aktywnosci_do_dodania = [
         act for act in activities
-        if act.get('startTimeLocal', '').startswith(wczoraj_str) or act.get('startTimeLocal', '').startswith(dzis_str)
+        if act.get('startTimeLocal', '').startswith(daty_do_pobrania[0]) or act.get('startTimeLocal', '').startswith(daty_do_pobrania[1]) or act.get('startTimeLocal', '').startswith(daty_do_pobrania[2])
     ]
 
     aktywnosci_do_dodania.sort(key=lambda act: act.get('startTimeLocal', ''))
@@ -437,8 +421,8 @@ def main():
             logger.error(f"Nie udało się sformatować krawędzi / wyśrodkowania: {e}")
 
     try:
-        scal_i_formatuj_dla_daty(dzis_str)
-        scal_i_formatuj_dla_daty(wczoraj_str)
+        for data_str in daty_do_pobrania:
+            scal_i_formatuj_dla_daty(data_str)
     except Exception as e:
         logger.error(f"Nie udało się połączyć/sformatować komórek: {e}")
 
