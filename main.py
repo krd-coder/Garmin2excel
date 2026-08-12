@@ -426,9 +426,9 @@ def main():
             # NOWOŚĆ: Uporządkowane i przesunięte linie pionowe!
             # NOWE GRANICE (pionowe linie):
             dodaj_pionowa(3)   # Między Plan(D) a HRV(E)
-            dodaj_pionowa(12)  # Między Stress(L) a ActType(M)
-            dodaj_pionowa(21)  # Między AnaerobicTE(U) a Z1(V)
-            dodaj_pionowa(26)  # Między Z5(Z) a UkrytaData(AA)
+            dodaj_pionowa(11)  # Między Stress(L) a ActType(M)
+            dodaj_pionowa(20)  # Między AnaerobicTE(U) a Z1(V)
+            dodaj_pionowa(25)  # Między Z5(Z) a UkrytaData(AA)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
