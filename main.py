@@ -30,7 +30,7 @@ def get_garmin_client():
 
 
 def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
-    import json # Upewniamy się, że json jest dostępny
+    import json
     activities = client.get_activities(0, limit)
 
     dzienne_statystyki = {}
@@ -40,6 +40,8 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
         total_kcal = "Brak"
         active_kcal = "Brak"
         bmr_kcal = "Brak"
+        avg_stress = "Brak"
+        body_battery_min = "Brak"
 
         try:
             hrv = client.get_hrv_data(data_badania)
@@ -54,18 +56,14 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
 
         try:
             summary = client.get_user_summary(data_badania)
-            
-            # =========================================================
-            # DEBUG: Wypisujemy całe SUMMARY na konsolę
-            # =========================================================
-            logger.info(f"\n{'='*50}\nSUROWE DANE: SUMMARY DLA DNIA {data_badania}\n{'='*50}")
-            logger.info(json.dumps(summary, indent=2))
-            logger.info(f"{'='*50}\n")
-            
             rhr = summary.get('restingHeartRate', "Brak")
             total_kcal = summary.get('totalKilocalories', "Brak")
             active_kcal = summary.get('activeKilocalories', "Brak")
             bmr_kcal = summary.get('bmrKilocalories', "Brak")
+            
+            # NOWOŚĆ: Wyciągamy średni stres i Body Battery z podsumowania dnia
+            avg_stress = summary.get('averageStressLevel', "Brak")
+            body_battery_min = summary.get('bodyBatteryLowestValue', "Brak")
         except Exception as e:
             logger.warning(f"Nie udało się pobrać podsumowania dnia dla {data_badania}: {e}")
 
@@ -77,6 +75,8 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
             "total_kcal": total_kcal,
             "active_kcal": active_kcal,
             "bmr_kcal": bmr_kcal,
+            "avg_stress": avg_stress,
+            "body_battery_min": body_battery_min
         }
 
     recent_activities = [
@@ -85,13 +85,20 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
     ]
 
     hr_zones_dict = {}
+    
+    # Słownik do podpięcia dodatkowych metryk treningowych (TE, Stres itp.)
+    activity_extra_metrics = {}
+
     for act in recent_activities:
         act_id = str(act['activityId'])
         exact_date = act.get('startTimeLocal', '')
         data_aktywnosci = exact_date[:10]
         logger.info(f"Pobieranie szczegółów treningu {act_id}...")
 
+        # Poprawione szukanie load w głównym obiekcie aktywności
         load = act.get('activityTrainingLoad') or act.get('trainingLoad') or 0.0
+        aerobic_te = 0.0
+        anaerobic_te = 0.0
 
         z1 = z2 = z3 = z4 = z5 = 0.0
         pasek_hr = "Nie" 
@@ -113,15 +120,14 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
         try:
             act_details = client.get_activity(act_id)
             
-            # =========================================================
-            # DEBUG: Wypisujemy całe DETAILS AKTYWNOŚCI na konsolę
-            # =========================================================
-            logger.info(f"\n{'='*50}\nSUROWE DANE: SZCZEGÓŁY AKTYWNOŚCI {act_id}\n{'='*50}")
-            logger.info(json.dumps(act_details, indent=2))
-            logger.info(f"{'='*50}\n")
+            # Prawidłowa ścieżka do activityTrainingLoad wewnątrz summaryDTO
+            summary_dto = act_details.get('summaryDTO', {})
+            if not load or load == 0.0:
+                load = summary_dto.get('activityTrainingLoad') or summary_dto.get('trainingLoad') or 0.0
             
-            if not load:
-                load = act_details.get('activityTrainingLoad') or act_details.get('trainingLoad') or 0.0
+            # Pobieramy Training Effect Aerobowy i Beztlenowy
+            aerobic_te = summary_dto.get('trainingEffect', 0.0)
+            anaerobic_te = summary_dto.get('anaerobicTrainingEffect', 0.0)
                 
             czujniki = act_details.get("metadata", {}).get("sensors", [])
             for czujnik in czujniki:
@@ -138,6 +144,12 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
                 dzienne_statystyki[data_aktywnosci]["znaleziono_load"] = True
 
         hr_zones_dict[act_id] = [z1, z2, z3, z4, z5, pasek_hr]
+        
+        # Zapisujemy dodatkowe metryki treningowe, żeby wstawić je do arkusza
+        activity_extra_metrics[act_id] = {
+            "aerobic_te": aerobic_te if aerobic_te else "-",
+            "anaerobic_te": anaerobic_te if anaerobic_te else "-"
+        }
 
     for data_badania in [wczoraj_str, dzis_str]:
         if dzienne_statystyki[data_badania]["znaleziono_load"]:
@@ -145,7 +157,7 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
         else:
             dzienne_statystyki[data_badania]["garmin_load"] = "0"
 
-    return activities, dzienne_statystyki, hr_zones_dict
+    return activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics
 
 
 def main():
@@ -169,7 +181,7 @@ def main():
         logger.error(f"Błąd połączenia z Garminem: {e}")
         raise
 
-    activities, dzienne_statystyki, hr_zones_dict = fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20)
+    activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics = fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20)
 
     for check_date in [wczoraj_str, dzis_str]:
         acts_for_date = [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]
@@ -255,12 +267,20 @@ def main():
         avg_hr = activity.get('averageHR', '')
         max_hr = activity.get('maxHR', '')
 
+        aero_te = activity_extra_metrics.get(activity_id, {}).get("aerobic_te", "0.0")
+        anaero_te = activity_extra_metrics.get(activity_id, {}).get("anaerobic_te", "0.0")
+
+# ... (kod pobierający dane bez zmian) ...
+        
         hrv = staty_dnia.get("hrv", "Brak")
         rhr = staty_dnia.get("rhr", "Brak")
         g_load = staty_dnia.get("garmin_load", "0")
         t_kcal = staty_dnia.get("total_kcal", "Brak")
         a_kcal = staty_dnia.get("active_kcal", "Brak")
         b_kcal = staty_dnia.get("bmr_kcal", "Brak")
+        # NOWOŚĆ: Wyciąganie nowych danych
+        body_bat = staty_dnia.get("body_battery_min", "Brak")
+        stress = staty_dnia.get("avg_stress", "Brak")
 
         if activity_id.startswith("REST_"):
             pasek_hr = "-"
@@ -270,12 +290,12 @@ def main():
         plan_treningu1 = plany_dzienne1.get(data_aktywnosci, "")
         plan_treningu2 = plany_dzienne2.get(data_aktywnosci, "")
 
-        # NOWOŚĆ: Układ kolumn, G to teraz garmin_load. Zmienne przesunięte w prawo.
+        # NOWOŚĆ: Zaktualizowany układ kolumn (K=BodyBat, L=Stress)
         row = [
             activity_id, data_aktywnosci, plan_treningu1, plan_treningu2, 
-            hrv, rhr, g_load, t_kcal, a_kcal, b_kcal, act_type,
+            hrv, rhr, g_load, t_kcal, a_kcal, b_kcal, body_bat, stress, act_type,
             distance_km, duration_min, tempo_str, avg_hr, max_hr,
-            pasek_hr, z1, z2, z3, z4, z5, exact_date
+            pasek_hr, aero_te, anaero_te, z1, z2, z3, z4, z5, exact_date
         ]
 
         docelowy_wiersz = None
@@ -299,9 +319,10 @@ def main():
                 logger.info(f"Odświeżanie statystyk dla istniejącego treningu {activity_id} (wiersz {docelowy_wiersz}).")
             else:
                 logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
-            # NOWOŚĆ: Aktualizowany zakres od A do W
-            sheet.batch_update([{'range': f"A{docelowy_wiersz}:W{docelowy_wiersz}", 'values': [row]}])
+            # NOWOŚĆ: Zakres rozszerzony do kolumny X
+            sheet.batch_update([{'range': f"A{docelowy_wiersz}:AA{docelowy_wiersz}", 'values': [row]}])
         else:
+            # ... (reszta kodu bez zmian) ...
             insert_idx = len(wszystkie_dane) + 1
 
             for i in range(3, len(wszystkie_dane)):
@@ -351,19 +372,13 @@ def main():
 
         if len(wiersze_w_arkuszu) > 1:
             logger.info(f"Scalanie dla {data_str}: wiersze od {start_w} do {end_w}.")
-            sheet.merge_cells(f"B{start_w}:B{end_w}")
-            sheet.merge_cells(f"C{start_w}:C{end_w}")
-            sheet.merge_cells(f"D{start_w}:D{end_w}")
-            sheet.merge_cells(f"E{start_w}:E{end_w}")
-            sheet.merge_cells(f"F{start_w}:F{end_w}")
-            sheet.merge_cells(f"G{start_w}:G{end_w}")
-            sheet.merge_cells(f"H{start_w}:H{end_w}")
-            sheet.merge_cells(f"I{start_w}:I{end_w}")
-            sheet.merge_cells(f"J{start_w}:J{end_w}") # NOWOŚĆ: dodane J do scalania dziennych statystyk
+            # Scalanie do kolumny L (Index 11 -> Litera L)
+            cols_to_merge = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]
+            for col in cols_to_merge:
+                sheet.merge_cells(f"{col}{start_w}:{col}{end_w}")
 
         try:
             requests = []
-            bialy = {"red": 1.0, "green": 1.0, "blue": 1.0}
             czarny = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
             zakres_pelny = {
@@ -371,7 +386,7 @@ def main():
                 "startRowIndex": start_w - 1,
                 "endRowIndex": end_w,
                 "startColumnIndex": 0,
-                "endColumnIndex": 23  # NOWOŚĆ: Od A do W (dla nowej kolumny)
+                "endColumnIndex": 27  # A do AA (27 kolumn)
             }
 
             requests.append({
@@ -409,10 +424,11 @@ def main():
                 })
 
             # NOWOŚĆ: Uporządkowane i przesunięte linie pionowe!
-            dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między D i E)
-            dodaj_pionowa(9)   # Oddziela Dzienne Statystyki od Treningów (między J i K)
-            dodaj_pionowa(16)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między Q i R)
-            dodaj_pionowa(21)  # Oddziela Strefy Tętna od Ukrytej Daty (między V i W)
+            # NOWE GRANICE (pionowe linie):
+            dodaj_pionowa(3)   # Między Plan(D) a HRV(E)
+            dodaj_pionowa(12)  # Między Stress(L) a ActType(M)
+            dodaj_pionowa(21)  # Między AnaerobicTE(U) a Z1(V)
+            dodaj_pionowa(26)  # Między Z5(Z) a UkrytaData(AA)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
