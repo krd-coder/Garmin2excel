@@ -340,89 +340,44 @@ def main():
     logger.info("Aktualizacja scalonych komórek i krawędzi (z białym tłem siatki!)...")
     wszystkie_ids_po_wstawieniu = sheet.col_values(1)
 
-    def scal_i_formatuj_dla_daty(data_str):
-        ids_dla_daty = [
-            str(act.get('activityId')) for act in activities
-            if act.get('startTimeLocal', '').startswith(data_str)
-        ]
-        ids_dla_daty.append(f"REST_{data_str}")
+    def scal_i_formatuj_dla_daty(daty_list, sheet, activities, wszystkie_ids_po_wstawieniu):
+        all_requests = []
+        czarny = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
-        wiersze_w_arkuszu = []
-        for i, id_arkusz in enumerate(wszystkie_ids_po_wstawieniu):
-            if id_arkusz in ids_dla_daty:
-                wiersze_w_arkuszu.append(i + 1)
+        for data_str in daty_list:
+            ids_dla_daty = [str(act.get('activityId')) for act in activities if act.get('startTimeLocal', '').startswith(data_str)]
+            ids_dla_daty.append(f"REST_{data_str}")
 
-        if not wiersze_w_arkuszu:
-            return
+            wiersze_w_arkuszu = [i + 1 for i, id_arkusz in enumerate(wszystkie_ids_po_wstawieniu) if id_arkusz in ids_dla_daty]
 
-        start_w = min(wiersze_w_arkuszu)
-        end_w = max(wiersze_w_arkuszu)
-
-        if len(wiersze_w_arkuszu) > 1:
-            logger.info(f"Scalanie dla {data_str}: wiersze od {start_w} do {end_w}.")
-            # Scalanie do kolumny L (Index 11 -> Litera L)
-            cols_to_merge = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]
-            for col in cols_to_merge:
-                sheet.merge_cells(f"{col}{start_w}:{col}{end_w}")
-
-        try:
-            requests = []
-            czarny = {"red": 0.0, "green": 0.0, "blue": 0.0}
-
-            zakres_pelny = {
-                "sheetId": sheet.id,
-                "startRowIndex": start_w - 1,
-                "endRowIndex": end_w,
-                "startColumnIndex": 0,
-                "endColumnIndex": 28  # A do AB (28 kolumn)
-            }
-
-            requests.append({
-                "repeatCell": {
-                    "range": zakres_pelny,
-                    "cell": {
-                        "userEnteredFormat": {
-                            "horizontalAlignment": "CENTER",
-                            "verticalAlignment": "MIDDLE"
+            if len(wiersze_w_arkuszu) > 1:
+                start_w, end_w = min(wiersze_w_arkuszu), max(wiersze_w_arkuszu)
+                
+                # Dodajemy scalanie do kolejki
+                for col in ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]:
+                    all_requests.append({
+                        "mergeCells": {
+                            "range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": ord(col)-65, "endColumnIndex": ord(col)-64},
+                            "mergeType": "MERGE_ALL"
                         }
-                    },
-                    "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment)"
-                }
-            })
+                    })
 
-            requests.append({
-                "updateBorders": {
-                    "range": zakres_pelny,
-                    "bottom": {"style": "SOLID_MEDIUM", "color": czarny}
-                }
-            })
+                # Dodajemy formatowanie i obramowanie do kolejki
+                zakres = {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": 0, "endColumnIndex": 27}
+                all_requests.append({"repeatCell": {"range": zakres, "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}}, "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment)"}})
+                all_requests.append({"updateBorders": {"range": zakres, "bottom": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
-            def dodaj_pionowa(kolumna_indeks):
-                requests.append({
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": sheet.id,
-                            "startRowIndex": start_w - 1,
-                            "endRowIndex": end_w,
-                            "startColumnIndex": kolumna_indeks,
-                            "endColumnIndex": kolumna_indeks + 1
-                        },
-                        "right": {"style": "SOLID_MEDIUM", "color": czarny}
-                    }
-                })
+                # Dodajemy linie pionowe do kolejki
+                for col_idx in [3, 12, 21, 26]:
+                    all_requests.append({"updateBorders": {"range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1}, "right": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
-            # NOWOŚĆ: Uporządkowane i przesunięte linie pionowe!
-            # NOWE GRANICE (pionowe linie):
-            dodaj_pionowa(3)   # Między Plan(D) a HRV(E)
-            dodaj_pionowa(11)  # Między Stress(L) a ActType(M)
-            dodaj_pionowa(20)  # Między AnaerobicTE(U) a Z1(V)
-            dodaj_pionowa(25)  # Między Z5(Z) a UkrytaData(AA)
-
-            body = {"requests": requests}
-            sheet.spreadsheet.batch_update(body)
-
-        except Exception as e:
-            logger.error(f"Nie udało się sformatować krawędzi / wyśrodkowania: {e}")
+        # Wysyłamy WSZYSTKO naraz
+        if all_requests:
+            try:
+                sheet.spreadsheet.batch_update({"requests": all_requests})
+                logger.info(f"Pomyślnie sformatowano wszystkie dni w jednym zapytaniu.")
+            except Exception as e:
+                logger.error(f"Błąd zbiorczego formatowania: {e}")
 
     try:
         for data_str in daty_do_pobrania:
