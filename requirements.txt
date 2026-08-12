@@ -2,3 +2,4 @@ garminconnect==0.3.10
 garth==0.8.0
 gspread==6.2.1
 python-dotenv==1.2.2
+requests==2.34.2
