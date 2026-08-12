@@ -15,16 +15,92 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
-def main():
-    logger.info("Uruchamianie Trenera AI (wersja REST API - autoryzacja nagłówkowa X-goog-api-key)...")
+def oblicz_fizjologie(wszystkie_dane, dzis):
+    """
+    Wylicza CTL, ATL, TSB, ACWR oraz Trend HRV na podstawie danych historycznych z arkusza.
+    Zakładamy indeksy (liczone od 0, gdzie A=0, B=1, C=2...):
+    - Data: kolumna B (indeks 1)
+    - HRV: kolumna E (indeks 4)
+    - Obciążenie (TSS / Garmin Load / sRPE): kolumna G (indeks 6) - DOSTOSUJ W RAZIE POTRZEBY
+    """
+    historia = {}
     
-    # 1. Klucz API
+    # 1. Zbieranie i czyszczenie danych
+    for row in wszystkie_dane[3:]:  # Pomijamy nagłówek
+        if len(row) > 1 and row[1].strip():
+            data_str = row[1].strip()
+            try:
+                # Weryfikacja formatu daty
+                datetime.strptime(data_str, "%Y-%m-%d")
+                
+                # Parsowanie obciążenia (kolumna G)
+                load_val = 0.0
+                if len(row) > 6 and row[6].strip().replace('.', '', 1).isdigit():
+                    load_val = float(row[6].strip())
+                    
+                # Parsowanie HRV (kolumna E)
+                hrv_val = None
+                if len(row) > 4 and row[4].strip().replace('.', '', 1).isdigit():
+                    hrv_val = float(row[4].strip())
+                    
+                historia[data_str] = {"load": load_val, "hrv": hrv_val}
+            except ValueError:
+                continue
+
+    # 2. Sortowanie dat chronologicznie, bierzemy pod uwagę wszystko aż do wczoraj
+    wczoraj_str = (dzis - timedelta(days=1)).strftime("%Y-%m-%d")
+    posortowane_daty = sorted([d for d in historia.keys() if d <= wczoraj_str])
+    
+    ctl = 0.0  # Chronic Training Load (Przewlekłe)
+    atl = 0.0  # Acute Training Load (Ostre)
+    lista_hrv = []
+    
+    # 3. Modelowanie matematyczne dzień po dniu
+    for data in posortowane_daty:
+        obciazenie = historia[data]["load"]
+        
+        # Wzory wykładniczej średniej kroczącej (EWMA) stosowane w kolarstwie i bieganiu
+        ctl = ctl + (obciazenie - ctl) / 42.0
+        atl = atl + (obciazenie - atl) / 7.0
+        
+        hrv = historia[data]["hrv"]
+        if hrv:
+            lista_hrv.append(hrv)
+            
+    # 4. Wyliczenia wskaźników końcowych
+    tsb = ctl - atl  # Training Stress Balance (Forma)
+    acwr = atl / ctl if ctl > 0 else 0.0  # Acute-to-Chronic Ratio
+    
+    # Trend HRV
+    hrv_trend_str = "Brak danych"
+    if len(lista_hrv) >= 2:
+        # Bierzemy średnią maksymalnie z ostatnich 30 wpisów
+        ostatnie_30 = lista_hrv[-30:]
+        srednia_30d = sum(ostatnie_30) / len(ostatnie_30)
+        ostatnie_hrv = lista_hrv[-1]
+        
+        delta_hrv = ((ostatnie_hrv - srednia_30d) / srednia_30d) * 100
+        hrv_trend_str = f"{delta_hrv:+.1f}%"
+
+    # 5. Budowanie tabeli wynikowej dla LLM
+    tabela = "METRYKA,WARTOŚĆ\n"
+    tabela += f"CTL (Baza/Fitness),{ctl:.1f}\n"
+    tabela += f"ATL (Zmęczenie),{atl:.1f}\n"
+    tabela += f"TSB (Świeżość/Forma),{tsb:.1f}\n"
+    tabela += f"ACWR (Wskaźnik przeciążenia),{acwr:.2f}\n"
+    tabela += f"HRV Trend (vs 30d),{hrv_trend_str}\n"
+    
+    logger.info(f"Wyliczono wskaźniki: CTL={ctl:.1f}, ATL={atl:.1f}, TSB={tsb:.1f}")
+    return tabela
+
+def main():
+    logger.info("Uruchamianie Trenera AI (Z modułem wyliczania obciążeń matematycznych)...")
+    
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         logger.error("Brak klucza GEMINI_API_KEY w pliku .env!")
         return
 
-    # 2. Połączenie z arkuszem
     try:
         gc = gspread.service_account(filename='credentials.json')
         sheet = gc.open_by_key(os.getenv("SHEET_ID")).sheet1
@@ -33,13 +109,11 @@ def main():
         logger.error(f"Błąd łączenia z arkuszem: {e}")
         return
     
-    # 3. Konwersja danych z arkusza do wirtualnego pliku CSV dla Gemini
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerows(wszystkie_dane)
     csv_string = output.getvalue()
     
-    # 4. Wczytanie strategii
     try:
         with open("strategia.txt", "r", encoding="utf-8") as f:
             strategia = f.read()
@@ -47,46 +121,46 @@ def main():
         logger.error("Brak pliku strategia.txt!")
         return
 
-    # 5. Wyznaczenie dat na kolejne 7 dni (od jutra)
     dzis = datetime.now(WARSAW_TZ).date()
     kolejne_7_dni = [(dzis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 8)]
     
-    # 6. Przygotowanie polecenia (Promptu)
+    # MAGIA DZIEJE SIĘ TUTAJ - wywołujemy kalkulator fizjologii
+    tabela_wskaznikow = oblicz_fizjologie(wszystkie_dane, dzis)
+    
     prompt = f"""
-Jesteś profesjonalnym trenerem. Poniżej znajduje się moja ogólna strategia:
-{strategia}
+    Jesteś profesjonalnym trenerem. Poniżej znajduje się moja ogólna strategia z konkretnymi ramami czasowymi:
+    {strategia}
 
-A oto pełny zrzut mojego dotychczasowego dziennika treningowego w formacie CSV:
-{csv_string}
+    To są moje matematycznie wyliczone wskaźniki fizjologiczne na stan dzisiejszy (użyj ich jako głównego radaru zmęczenia):
+    {tabela_wskaznikow}
 
-Twoim zadaniem jest zaplanować mi treningi na kolejne 7 dni, od {kolejne_7_dni[0]} do {kolejne_7_dni[-1]}.
-Przeanalizuj historię, by zobaczyć w jakiej jestem formie, i dopasuj plany do strategii.
+    A oto pełny zrzut mojego dotychczasowego dziennika treningowego w formacie CSV do wglądu w szczegóły:
+    {csv_string}
 
-Ten skrypt jest uruchamiany codziennie, więc przeanalizuj obecny plan na najbliższe 7 dni i w razie potrzeby go zmodyfikuj, aby był zgodny z moją strategią i adekwatny do zmęczenia.
-
-WYMÓG KRYTYCZNY: Zwróć wynik WYŁĄCZNIE jako surowy JSON. 
-Struktura JSON musi wyglądać DOKŁADNIE tak:
-{{
-    "{kolejne_7_dni[0]}": {{"typ": "Krótka nazwa (np. Interwały)", "opis": "Szczegółowy opis (np. 5x1km tempo 4:00)"}},
-    ...
-}}
-"""
-
-    logger.info("Wysyłanie danych bezpośrednio do API Google z nowym systemem autoryzacji...")
+    Twoim zadaniem jest zaplanować mi treningi na kolejne 7 dni, od {kolejne_7_dni[0]} do {kolejne_7_dni[-1]}.
+    Przeanalizuj wskaźniki CTL, ATL, TSB i ACWR, by zobaczyć w jakiej jestem formie, i dopasuj plany do ram czasowych w strategii. 
+    Pamiętaj: zdrowie > strategia. Jeśli TSB jest niebezpiecznie niskie lub trend HRV mocno ujemny, koryguj plan awaryjnie.
     
-    # NOWOŚĆ 1: URL z modelem gemini-flash-latest, bez parametru ?key=
+    Ten skrypt jest uruchamiany codziennie, więc przeanalizuj obecny plan na najbliższe 7 dni i w razie potrzeby go zmodyfikuj, aby był zgodny z moją strategią i adekwatny do zmęczenia.
+    
+    Jeżeli modyfikujesz plan na dany trening - dodaj komentarz dotyczący powodu zmiany (np. "Zmieniono tempo z 4:30 na 4:15 ze względu na poprawę formy").
+    Jeżeli nie ma potrzeby zmiany planu na dany dzień, pozostaw go CAŁKOWICIE bez zmian.
+    
+    WYMÓG KRYTYCZNY: Zwróć wynik WYŁĄCZNIE jako surowy JSON. 
+    Struktura JSON musi wyglądać DOKŁADNIE tak:
+    {{
+        "{kolejne_7_dni[0]}": {{"typ": "Krótka nazwa (np. Interwały)", "opis": "Szczegółowy opis (np. 5x1km tempo 4:00)"}},
+        ...
+    }}
+    """
+
+    logger.info("Wysyłanie zintegrowanych danych (z tabelą wskaźników) do API Google...")
+    
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent"
-    
     payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }],
-        "generationConfig": {
-            "responseMimeType": "application/json"
-        }
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"responseMimeType": "application/json"}
     }
-    
-    # NOWOŚĆ 2: Wstrzyknięcie klucza AQ... bezpośrednio w nagłówki
     headers = {
         'Content-Type': 'application/json',
         'X-goog-api-key': api_key
@@ -106,13 +180,12 @@ Struktura JSON musi wyglądać DOKŁADNIE tak:
     except requests.exceptions.RequestException as e:
         logger.error(f"Błąd komunikacji HTTP: {e}")
         if response is not None:
-            logger.error(f"Szczegóły błędu od serwera Google: {response.text}")
+            logger.error(f"Szczegóły błędu: {response.text}")
         return
     except (KeyError, IndexError, json.JSONDecodeError) as e:
-        logger.error(f"Błąd parsowania odpowiedzi JSON: {e}\nSurowy tekst z serwera: {tekst_ai if 'tekst_ai' in locals() else 'Brak'}")
+        logger.error(f"Błąd parsowania: {e}\nSurowy tekst: {tekst_ai if 'tekst_ai' in locals() else 'Brak'}")
         return
 
-    # 7. Wpisywanie wygenerowanego planu do Arkusza (dynamiczne nadpisywanie!)
     for data_planu in kolejne_7_dni:
         if data_planu not in wygenerowany_plan:
             continue
@@ -158,7 +231,7 @@ Struktura JSON musi wyglądać DOKŁADNIE tak:
             sheet.append_row(nowy_wiersz)
             wszystkie_dane.append(nowy_wiersz)
             
-    logger.info("Twój dynamicznie zaktualizowany plan na 7 dni jest już w Arkuszu!")
+    logger.info("Plan zaktualizowany o modele matematyczne jest w Arkuszu!")
 
 if __name__ == "__main__":
     main()

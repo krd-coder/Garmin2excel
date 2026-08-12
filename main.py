@@ -60,9 +60,23 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
         except Exception as e:
             logger.warning(f"Nie udało się pobrać podsumowania dnia dla {data_badania}: {e}")
 
+        # NOWOŚĆ: Sumowanie Garmin Load dla danego dnia ze wszystkich aktywności
+        dzienne_load = 0.0
+        znaleziono_load = False
+        
+        for act in activities:
+            if act.get('startTimeLocal', '').startswith(data_badania):
+                load = act.get('trainingLoad')
+                if load is not None:
+                    dzienne_load += float(load)
+                    znaleziono_load = True
+                    
+        g_load_str = str(round(dzienne_load)) if znaleziono_load else "0"
+
         dzienne_statystyki[data_badania] = {
             "hrv": hrv_summary,
             "rhr": rhr,
+            "garmin_load": g_load_str,
             "total_kcal": total_kcal,
             "active_kcal": active_kcal,
             "bmr_kcal": bmr_kcal,
@@ -79,7 +93,7 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
         logger.info(f"Pobieranie szczegółów treningu {act_id}...")
 
         z1 = z2 = z3 = z4 = z5 = 0.0
-        pasek_hr = "Nie"  # Domyślnie zakładamy, że to czujnik w zegarku
+        pasek_hr = "Nie" 
 
         try:
             zones_data = client.get_activity_hr_in_timezones(act_id)
@@ -114,7 +128,6 @@ def fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20):
 def main():
     logger.info("Rozpoczęcie procesu synchronizacji (Kolejność: Chronologiczna, z góry na dół)...")
 
-    # 1. Obliczamy daty (wg czasu warszawskiego, niezależnie od strefy czasowej serwera)
     dzis = datetime.now(WARSAW_TZ).date()
     dzis_str = dzis.strftime("%Y-%m-%d")
     wczoraj = dzis - timedelta(days=1)
@@ -135,7 +148,6 @@ def main():
 
     activities, dzienne_statystyki, hr_zones_dict = fetch_garmin_data(client, wczoraj_str, dzis_str, limit=20)
 
-    # --- Tworzenie pustych wierszy dla dni bez treningu ---
     for check_date in [wczoraj_str, dzis_str]:
         acts_for_date = [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]
 
@@ -152,7 +164,6 @@ def main():
                 'maxHR': '-'
             }
             activities.append(dummy_act)
-    # ----------------------------------------------------------------
 
     aktywnosci_do_dodania = [
         act for act in activities
@@ -192,9 +203,6 @@ def main():
 
         activity_id = str(activity.get('activityId'))
         
-        # =====================================================================
-        # NOWOŚĆ: Zamiast pomijać istniejący trening, zapamiętujemy, że istnieje!
-        # =====================================================================
         is_existing_workout = False
         if activity_id in existing_ids and not activity_id.startswith("REST_"):
             is_existing_workout = True
@@ -226,6 +234,7 @@ def main():
 
         hrv = staty_dnia.get("hrv", "Brak")
         rhr = staty_dnia.get("rhr", "Brak")
+        g_load = staty_dnia.get("garmin_load", "0")
         t_kcal = staty_dnia.get("total_kcal", "Brak")
         a_kcal = staty_dnia.get("active_kcal", "Brak")
         b_kcal = staty_dnia.get("bmr_kcal", "Brak")
@@ -238,19 +247,19 @@ def main():
         plan_treningu1 = plany_dzienne1.get(data_aktywnosci, "")
         plan_treningu2 = plany_dzienne2.get(data_aktywnosci, "")
 
+        # NOWOŚĆ: Układ kolumn, G to teraz garmin_load. Zmienne przesunięte w prawo.
         row = [
-            activity_id, data_aktywnosci, plan_treningu1, plan_treningu2, hrv, rhr, t_kcal, a_kcal, b_kcal, act_type,
+            activity_id, data_aktywnosci, plan_treningu1, plan_treningu2, 
+            hrv, rhr, g_load, t_kcal, a_kcal, b_kcal, act_type,
             distance_km, duration_min, tempo_str, avg_hr, max_hr,
             pasek_hr, z1, z2, z3, z4, z5, exact_date
         ]
 
         docelowy_wiersz = None
         
-        # Jeśli to już istniejący trening z Garmina, znajdujemy jego własny wiersz do nadpisania
         if is_existing_workout:
             docelowy_wiersz = existing_ids.index(activity_id) + 1
         else:
-            # Szukamy pustego planu lub REST-a do nadpisania
             for i, r_data in enumerate(wszystkie_dane):
                 row_idx = i + 1
                 if row_idx <= 1:
@@ -267,7 +276,8 @@ def main():
                 logger.info(f"Odświeżanie statystyk dla istniejącego treningu {activity_id} (wiersz {docelowy_wiersz}).")
             else:
                 logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
-            sheet.batch_update([{'range': f"A{docelowy_wiersz}:V{docelowy_wiersz}", 'values': [row]}])
+            # NOWOŚĆ: Aktualizowany zakres od A do W
+            sheet.batch_update([{'range': f"A{docelowy_wiersz}:W{docelowy_wiersz}", 'values': [row]}])
         else:
             insert_idx = len(wszystkie_dane) + 1
 
@@ -276,8 +286,8 @@ def main():
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
                 
-                # POPRAWKA: Ukryta data jest pod indeksem 21 (Kolumna V)
-                r_exact = r_data[21] if len(r_data) > 21 else ""
+                # POPRAWKA: Ukryta data jest teraz pod indeksem 22 (Kolumna W)
+                r_exact = r_data[22] if len(r_data) > 22 else ""
 
                 if not r_date:
                     continue
@@ -326,6 +336,7 @@ def main():
             sheet.merge_cells(f"G{start_w}:G{end_w}")
             sheet.merge_cells(f"H{start_w}:H{end_w}")
             sheet.merge_cells(f"I{start_w}:I{end_w}")
+            sheet.merge_cells(f"J{start_w}:J{end_w}") # NOWOŚĆ: dodane J do scalania dziennych statystyk
 
         try:
             requests = []
@@ -337,7 +348,7 @@ def main():
                 "startRowIndex": start_w - 1,
                 "endRowIndex": end_w,
                 "startColumnIndex": 0,
-                "endColumnIndex": 22  # Od A do V
+                "endColumnIndex": 23  # NOWOŚĆ: Od A do W (dla nowej kolumny)
             }
 
             requests.append({
@@ -374,11 +385,11 @@ def main():
                     }
                 })
 
-            # Uporządkowane linie pionowe!
+            # NOWOŚĆ: Uporządkowane i przesunięte linie pionowe!
             dodaj_pionowa(3)   # Oddziela Plan od Dziennych Statystyk (między D i E)
-            dodaj_pionowa(8)   # Oddziela Dzienne Statystyki od Treningów (między I i J)
-            dodaj_pionowa(15)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między P i Q)
-            dodaj_pionowa(20)  # Oddziela Strefy Tętna od Ukrytej Daty (między U i V)
+            dodaj_pionowa(9)   # Oddziela Dzienne Statystyki od Treningów (między J i K)
+            dodaj_pionowa(16)  # Oddziela Ogólne Dane Treningu od Stref Tętna (między Q i R)
+            dodaj_pionowa(21)  # Oddziela Strefy Tętna od Ukrytej Daty (między V i W)
 
             body = {"requests": requests}
             sheet.spreadsheet.batch_update(body)
