@@ -14,6 +14,8 @@ from garminconnect import (
 
 dotenv.load_dotenv()
 
+days_back_to_fetch = 42  # Liczba dni wstecz do pobrania danych z Garmina
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -142,7 +144,7 @@ def fetch_garmin_data(client, daty_list, limit=20):
 def main():
     logger.info("Synchronizacja: 3 dni wstecz.")
     dzis = datetime.now(WARSAW_TZ).date()
-    daty_do_pobrania = [(dzis - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(42)] # [dzis, wczoraj, przedwczoraj]
+    daty_do_pobrania = [(dzis - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days_back_to_fetch)] # [dzis, wczoraj, przedwczoraj]
 
     try:
         client = get_garmin_client()
@@ -311,7 +313,7 @@ def main():
             # ... (reszta kodu bez zmian) ...
             insert_idx = len(wszystkie_dane) + 1
 
-            for i in range(42, len(wszystkie_dane)):
+            for i in range(days_back_to_fetch, len(wszystkie_dane)):
                 row_idx = i + 1
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
