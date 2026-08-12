@@ -311,7 +311,7 @@ def main():
             # ... (reszta kodu bez zmian) ...
             insert_idx = len(wszystkie_dane) + 1
 
-            for i in range(3, len(wszystkie_dane)):
+            for i in range(42, len(wszystkie_dane)):
                 row_idx = i + 1
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
