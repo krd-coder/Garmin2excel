@@ -142,7 +142,7 @@ def fetch_garmin_data(client, daty_list, limit=20):
     return activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics
 
 def main():
-    logger.info("Synchronizacja: 3 dni wstecz.")
+    logger.info(f"Synchronizacja: {days_back_to_fetch} dni wstecz.")
     dzis = datetime.now(WARSAW_TZ).date()
     daty_do_pobrania = [(dzis - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days_back_to_fetch)] # [dzis, wczoraj, przedwczoraj]
 
@@ -353,7 +353,7 @@ def main():
             if len(wiersze_w_arkuszu) > 1:
                 start_w, end_w = min(wiersze_w_arkuszu), max(wiersze_w_arkuszu)
                 
-                # Dodajemy scalanie do kolejki
+                # Scalanie
                 for col in ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]:
                     all_requests.append({
                         "mergeCells": {
@@ -362,20 +362,19 @@ def main():
                         }
                     })
 
-                # Dodajemy formatowanie i obramowanie do kolejki
+                # Formatowanie tekstu i dół
                 zakres = {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": 0, "endColumnIndex": 27}
                 all_requests.append({"repeatCell": {"range": zakres, "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}}, "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment)"}})
                 all_requests.append({"updateBorders": {"range": zakres, "bottom": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
-                # Dodajemy linie pionowe do kolejki
+                # Linie pionowe
                 for col_idx in [3, 12, 21, 26]:
                     all_requests.append({"updateBorders": {"range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1}, "right": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
-        # Wysyłamy WSZYSTKO naraz
         if all_requests:
             try:
                 sheet.spreadsheet.batch_update({"requests": all_requests})
-                logger.info(f"Pomyślnie sformatowano wszystkie dni w jednym zapytaniu.")
+                logger.info("Pomyślnie sformatowano wszystkie dni jednym zapytaniem.")
             except Exception as e:
                 logger.error(f"Błąd zbiorczego formatowania: {e}")
 
