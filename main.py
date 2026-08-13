@@ -319,14 +319,16 @@ def main():
             # NOWOŚĆ: Zakres rozszerzony do kolumny X
             sheet.batch_update([{'range': f"A{docelowy_wiersz}:AB{docelowy_wiersz}", 'values': [row]}])
         else:
-            # ... (reszta kodu bez zmian) ...
-            insert_idx = len(wszystkie_dane) + 1
+            # Szukamy pozycji jako "tuż za ostatnim wierszem o dacie <= nowej" (a nie
+            # "tuż przed pierwszym wierszem o dacie >"), żeby pojedynczy nieuporządkowany
+            # wiersz gdzieś wcześniej w arkuszu nie przerywał skanu i nie wpychał wpisu na góre.
+            insert_idx = 2
 
             for i in range(1, len(wszystkie_dane)):
                 row_idx = i + 1
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
-                
+
                 # Ukryta pełna data (exact_date) jest pod indeksem 26 (Kolumna AA)
                 r_exact = r_data[26] if len(r_data) > 26 else ""
 
@@ -335,9 +337,8 @@ def main():
 
                 row_time = r_exact if r_exact else f"{r_date} 00:00:00"
 
-                if exact_date < row_time:
-                    insert_idx = row_idx
-                    break
+                if row_time <= exact_date:
+                    insert_idx = row_idx + 1
 
             if insert_idx > len(wszystkie_dane):
                 logger.info(f"Dopisywanie nowego wiersza {activity_id} na samym dole arkusza...")
