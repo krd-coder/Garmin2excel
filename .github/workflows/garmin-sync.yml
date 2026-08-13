@@ -1,8 +1,9 @@
-name: Garmin to Google Sheets sync
+name: Garmin sync + AI training plan
 
 on:
   schedule:
-    - cron: "0 */4 * * *"
+    # 2:00 AM Warsaw time (CEST/UTC+2). Runs 1:00 AM Warsaw time during CET/winter (UTC+1) — cron has no DST awareness.
+    - cron: "0 0 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -33,9 +34,15 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: echo "$GOOGLE_CREDENTIALS" > credentials.json
 
-      - name: Run sync
+      - name: Write training strategy
+        env:
+          STRATEGIA_TXT: ${{ secrets.STRATEGIA_TXT }}
+        run: echo "$STRATEGIA_TXT" > strategia.txt
+
+      - name: Run sync + planner
         env:
           GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
