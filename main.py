@@ -171,22 +171,24 @@ def oblicz_fizjologie(wszystkie_dane, dzis):
     historia = {}
 
     # 1. Zbieranie i czyszczenie danych (nagłówek jest odfiltrowywany przez walidację formatu daty poniżej)
+    # Komórki mogą tu być zwykłymi stringami (świeży odczyt z arkusza) albo surowymi
+    # int/float (lokalnie zmutowana lista z fazy synchronizacji) — rzutujemy na str dla bezpieczeństwa.
     for row in wszystkie_dane:
-        if len(row) > 1 and row[1].strip():
-            data_str = row[1].strip()
+        if len(row) > 1 and str(row[1]).strip():
+            data_str = str(row[1]).strip()
             try:
                 # Weryfikacja formatu daty
                 datetime.strptime(data_str, "%Y-%m-%d")
 
                 # Parsowanie obciążenia (kolumna G)
                 load_val = 0.0
-                if len(row) > 6 and row[6].strip().replace('.', '', 1).isdigit():
-                    load_val = float(row[6].strip())
+                if len(row) > 6 and str(row[6]).strip().replace('.', '', 1).isdigit():
+                    load_val = float(str(row[6]).strip())
 
                 # Parsowanie HRV (kolumna E)
                 hrv_val = None
-                if len(row) > 4 and row[4].strip().replace('.', '', 1).isdigit():
-                    hrv_val = float(row[4].strip())
+                if len(row) > 4 and str(row[4]).strip().replace('.', '', 1).isdigit():
+                    hrv_val = float(str(row[4]).strip())
 
                 historia[data_str] = {"load": load_val, "hrv": hrv_val}
             except ValueError:
