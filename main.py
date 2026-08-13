@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 TOKEN_DIR = "./.garmin_tokens"
 WARSAW_TZ = ZoneInfo("Europe/Warsaw")
 
+def _activity_covers_date(act, check_date):
+    """Czy aktywność (mogąca trwać kilka dni) obejmuje swoim czasem trwania podany dzień."""
+    start_str = act.get('startTimeLocal', '')
+    if not start_str:
+        return False
+    try:
+        start_dt = datetime.strptime(start_str[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return False
+    end_dt = start_dt + timedelta(seconds=act.get('duration', 0) or 0)
+    check_dt = datetime.strptime(check_date, "%Y-%m-%d")
+    return start_dt.date() <= check_dt.date() <= end_dt.date()
+
+
 def get_garmin_client():
     email = os.getenv("GARMIN_EMAIL")
     password = os.getenv("GARMIN_PASSWORD")
@@ -165,6 +179,9 @@ def main():
         acts_for_date = [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]
 
         if not acts_for_date:
+            if any(_activity_covers_date(act, check_date) for act in activities):
+                logger.info(f"Dzień {check_date} objęty wieloniowym treningiem — pomijam wpis REST.")
+                continue
             logger.info(f"Brak treningów dla {check_date}. Tworzenie pustego wpisu z dziennymi statystykami.")
             dummy_act = {
                 'activityId': f"REST_{check_date}",
@@ -345,11 +362,18 @@ def main():
             if len(wiersze_w_arkuszu) > 1:
                 start_w, end_w = min(wiersze_w_arkuszu), max(wiersze_w_arkuszu)
                 
-                # Scalanie
+                # 1. Najpierw rozwalamy stare scalenia (zapobiega błędowi 400 o istniejącym scaleniu)
                 for col in ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]:
+                    col_idx = ord(col) - 65
+                    all_requests.append({
+                        "unmergeCells": {
+                            "range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1}
+                        }
+                    })
+                    # 2. Następnie aplikujemy nowe scalanie
                     all_requests.append({
                         "mergeCells": {
-                            "range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": ord(col)-65, "endColumnIndex": ord(col)-64},
+                            "range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1},
                             "mergeType": "MERGE_ALL"
                         }
                     })
@@ -366,7 +390,7 @@ def main():
         if all_requests:
             try:
                 sheet.spreadsheet.batch_update({"requests": all_requests})
-                logger.info("Pomyślnie sformatowano wszystkie dni jednym zapytaniem.")
+                logger.info("Pomyślnie rozszyto, scalono i sformatowano arkusz w jednym zapytaniu.")
             except Exception as e:
                 logger.error(f"Błąd zbiorczego formatowania: {e}")
 
