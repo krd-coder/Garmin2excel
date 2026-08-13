@@ -327,8 +327,8 @@ def main():
                 r_data = wszystkie_dane[i]
                 r_date = r_data[1] if len(r_data) > 1 else ""
                 
-                # POPRAWKA: Ukryta data jest teraz pod indeksem 22 (Kolumna W)
-                r_exact = r_data[22] if len(r_data) > 22 else ""
+                # Ukryta pełna data (exact_date) jest pod indeksem 26 (Kolumna AA)
+                r_exact = r_data[26] if len(r_data) > 26 else ""
 
                 if not r_date:
                     continue
