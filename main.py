@@ -389,7 +389,7 @@ def main():
             all_requests.append({"updateBorders": {"range": zakres, "bottom": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
             # Linie pionowe
-            for col_idx in [3, 12, 21, 26]:
+            for col_idx in [3, 11, 20, 25]:
                 all_requests.append({"updateBorders": {"range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1}, "right": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
         if all_requests:
