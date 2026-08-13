@@ -29,9 +29,10 @@ def get_garmin_client():
     client.login(tokenstore=TOKEN_DIR)
     return client
 
-def fetch_garmin_data(client, daty_list, limit=20):
+def fetch_garmin_data(client, daty_list):
     import json
-    activities = client.get_activities(0, limit)
+    activities = client.get_activities_by_date(min(daty_list), max(daty_list), sortorder="asc")
+    activities.sort(key=lambda act: act.get('startTimeLocal', ''))
 
     dzienne_statystyki = {}
     for data_badania in daty_list:
@@ -149,14 +150,6 @@ def main():
     try:
         client = get_garmin_client()
         activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics = fetch_garmin_data(client, daty_do_pobrania)
-        
-        # Tworzenie brakujących wpisów REST
-        for check_date in daty_do_pobrania:
-            if not [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]:
-                activities.append({'activityId': f"REST_{check_date}", 'startTimeLocal': f"{check_date} 00:00:00", 'activityName': 'Dzień bez treningu'})
-
-        aktywnosci_do_dodania = [act for act in activities if any(act.get('startTimeLocal', '').startswith(d) for d in daty_do_pobrania)]
-        aktywnosci_do_dodania.sort(key=lambda act: act.get('startTimeLocal', ''))
     except GarminConnectAuthenticationError as e:
         logger.error(f"Błąd autoryzacji Garmina — sprawdź GARMIN_EMAIL/GARMIN_PASSWORD: {e}")
         raise
@@ -167,8 +160,7 @@ def main():
         logger.error(f"Błąd połączenia z Garminem: {e}")
         raise
 
-    activities, dzienne_statystyki, hr_zones_dict, activity_extra_metrics = fetch_garmin_data(client, daty_do_pobrania, limit=20)
-
+    # Tworzenie brakujących wpisów REST
     for check_date in daty_do_pobrania:
         acts_for_date = [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]
 
