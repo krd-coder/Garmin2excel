@@ -360,9 +360,12 @@ def main():
 
             wiersze_w_arkuszu = [i + 1 for i, id_arkusz in enumerate(wszystkie_ids_po_wstawieniu) if id_arkusz in ids_dla_daty]
 
+            if not wiersze_w_arkuszu:
+                continue
+
+            start_w, end_w = min(wiersze_w_arkuszu), max(wiersze_w_arkuszu)
+
             if len(wiersze_w_arkuszu) > 1:
-                start_w, end_w = min(wiersze_w_arkuszu), max(wiersze_w_arkuszu)
-                
                 # 1. Najpierw rozwalamy stare scalenia (zapobiega błędowi 400 o istniejącym scaleniu)
                 for col in ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"]:
                     col_idx = ord(col) - 65
@@ -379,14 +382,14 @@ def main():
                         }
                     })
 
-                # Formatowanie tekstu i dół
-                zakres = {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": 0, "endColumnIndex": 27}
-                all_requests.append({"repeatCell": {"range": zakres, "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}}, "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment)"}})
-                all_requests.append({"updateBorders": {"range": zakres, "bottom": {"style": "SOLID_MEDIUM", "color": czarny}}})
+            # Formatowanie tekstu i dół — dla każdego dnia, niezależnie od liczby wierszy
+            zakres = {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": 0, "endColumnIndex": 27}
+            all_requests.append({"repeatCell": {"range": zakres, "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}}, "fields": "userEnteredFormat(horizontalAlignment,verticalAlignment)"}})
+            all_requests.append({"updateBorders": {"range": zakres, "bottom": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
-                # Linie pionowe
-                for col_idx in [3, 12, 21, 26]:
-                    all_requests.append({"updateBorders": {"range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1}, "right": {"style": "SOLID_MEDIUM", "color": czarny}}})
+            # Linie pionowe
+            for col_idx in [3, 12, 21, 26]:
+                all_requests.append({"updateBorders": {"range": {"sheetId": sheet.id, "startRowIndex": start_w-1, "endRowIndex": end_w, "startColumnIndex": col_idx, "endColumnIndex": col_idx+1}, "right": {"style": "SOLID_MEDIUM", "color": czarny}}})
 
         if all_requests:
             try:
