@@ -228,10 +228,12 @@ def main():
         logger.error(f"Błąd łączenia z arkuszem: {e}")
         return
 
-    for activity in aktywnosci_do_dodania:
-        wszystkie_dane = sheet.get_all_values()
-        existing_ids = [r[0] if len(r) > 0 else "" for r in wszystkie_dane]
+    # Utrzymujemy lokalną kopię danych arkusza i aktualizujemy ją po każdym zapisie,
+    # zamiast odczytywać cały arkusz ponownie przy każdej aktywności (Google Sheets API
+    # ma limit odczytów na minutę, a 40+ odczytów w ciągu sekundy go przekracza — błąd 429).
+    existing_ids = [r[0] if len(r) > 0 else "" for r in wszystkie_dane]
 
+    for activity in aktywnosci_do_dodania:
         activity_id = str(activity.get('activityId'))
         
         is_existing_workout = False
@@ -319,6 +321,8 @@ def main():
                 logger.info(f"Nadpisywanie wiersza {docelowy_wiersz} aktywnością {activity_id}.")
             # NOWOŚĆ: Zakres rozszerzony do kolumny X
             sheet.batch_update([{'range': f"A{docelowy_wiersz}:AB{docelowy_wiersz}", 'values': [row]}])
+            wszystkie_dane[docelowy_wiersz - 1] = row
+            existing_ids[docelowy_wiersz - 1] = activity_id
         else:
             # Szukamy pozycji jako "tuż za ostatnim wierszem o dacie <= nowej" (a nie
             # "tuż przed pierwszym wierszem o dacie >"), żeby pojedynczy nieuporządkowany
@@ -344,9 +348,13 @@ def main():
             if insert_idx > len(wszystkie_dane):
                 logger.info(f"Dopisywanie nowego wiersza {activity_id} na samym dole arkusza...")
                 sheet.append_row(row)
+                wszystkie_dane.append(row)
+                existing_ids.append(activity_id)
             else:
                 logger.info(f"Wstawianie wiersza {activity_id} chronologicznie w pozycji {insert_idx}...")
                 sheet.insert_rows([row], row=insert_idx)
+                wszystkie_dane.insert(insert_idx - 1, row)
+                existing_ids.insert(insert_idx - 1, activity_id)
 
     logger.info("Aktualizacja scalonych komórek i krawędzi (z białym tłem siatki!)...")
     wszystkie_ids_po_wstawieniu = sheet.col_values(1)
