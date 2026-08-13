@@ -24,9 +24,9 @@ def oblicz_fizjologie(wszystkie_dane, dzis):
     - Obciążenie (TSS / Garmin Load / sRPE): kolumna G (indeks 6) - DOSTOSUJ W RAZIE POTRZEBY
     """
     historia = {}
-    
-    # 1. Zbieranie i czyszczenie danych
-    for row in wszystkie_dane[3:]:  # Pomijamy nagłówek
+
+    # 1. Zbieranie i czyszczenie danych (nagłówek jest odfiltrowywany przez walidację formatu daty poniżej)
+    for row in wszystkie_dane:
         if len(row) > 1 and row[1].strip():
             data_str = row[1].strip()
             try:
@@ -108,10 +108,16 @@ def main():
     except Exception as e:
         logger.error(f"Błąd łączenia z arkuszem: {e}")
         return
-    
+
+    # Do analizy (tabela fizjologii, CSV dla LLM) bierzemy tylko ostatnie 42 wiersze —
+    # CTL jest liczone jako 42-dniowa średnia wykładnicza, więc potrzebuje całego tego okna.
+    # Wyszukiwanie miejsca na plan (poniżej) wciąż działa na całym arkuszu, bo potrzebuje
+    # prawdziwych numerów wierszy.
+    historia_do_analizy = wszystkie_dane[-42:]
+
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerows(wszystkie_dane)
+    writer.writerows(historia_do_analizy)
     csv_string = output.getvalue()
     
     try:
@@ -125,7 +131,7 @@ def main():
     kolejne_7_dni = [(dzis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 8)]
     
     # MAGIA DZIEJE SIĘ TUTAJ - wywołujemy kalkulator fizjologii
-    tabela_wskaznikow = oblicz_fizjologie(wszystkie_dane, dzis)
+    tabela_wskaznikow = oblicz_fizjologie(historia_do_analizy, dzis)
     
     prompt = f"""
     Jesteś profesjonalnym trenerem. Poniżej znajduje się moja ogólna strategia z konkretnymi ramami czasowymi:
