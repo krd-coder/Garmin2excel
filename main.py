@@ -379,8 +379,7 @@ def main():
                 logger.error(f"Błąd zbiorczego formatowania: {e}")
 
     try:
-        for data_str in daty_do_pobrania:
-            scal_i_formatuj_dla_daty(data_str)
+        scal_i_formatuj_dla_daty(daty_do_pobrania, sheet, activities, wszystkie_ids_po_wstawieniu)
     except Exception as e:
         logger.error(f"Nie udało się połączyć/sformatować komórek: {e}")
 
