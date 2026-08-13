@@ -179,15 +179,16 @@ def main():
         acts_for_date = [act for act in activities if act.get('startTimeLocal', '').startswith(check_date)]
 
         if not acts_for_date:
-            if any(_activity_covers_date(act, check_date) for act in activities):
-                logger.info(f"Dzień {check_date} objęty wieloniowym treningiem — pomijam wpis REST.")
-                continue
-            logger.info(f"Brak treningów dla {check_date}. Tworzenie pustego wpisu z dziennymi statystykami.")
+            is_covered = any(_activity_covers_date(act, check_date) for act in activities)
+            if is_covered:
+                logger.info(f"Dzień {check_date} objęty wieloniowym treningiem — wpis kontynuacji.")
+            else:
+                logger.info(f"Brak treningów dla {check_date}. Tworzenie pustego wpisu z dziennymi statystykami.")
             dummy_act = {
                 'activityId': f"REST_{check_date}",
                 'startTimeLocal': f"{check_date} 00:00:00",
-                'activityName': 'Dzień bez treningu',
-                'activityType': {'typeKey': '-'},
+                'activityName': 'Kontynuacja treningu wieloniowego' if is_covered else 'Dzień bez treningu',
+                'activityType': {'typeKey': 'w trakcie' if is_covered else '-'},
                 'distance': 0,
                 'duration': 0,
                 'averageHR': '-',
