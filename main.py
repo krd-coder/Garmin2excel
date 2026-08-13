@@ -14,7 +14,7 @@ from garminconnect import (
 
 dotenv.load_dotenv()
 
-days_back_to_fetch = 42  # Liczba dni wstecz do pobrania danych z Garmina
+days_back_to_fetch = 5  # Liczba dni wstecz do pobrania danych z Garmina
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
