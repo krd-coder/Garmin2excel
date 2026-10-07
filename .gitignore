@@ -7,7 +7,7 @@ venv/
 .garmin_tokens/
 credentials.json
 garmin_state.json
-strategia.txt
+.strategies/
 
 # Python
 __pycache__/

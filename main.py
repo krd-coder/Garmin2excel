@@ -241,7 +241,80 @@ def oblicz_fizjologie(wszystkie_dane, dzis):
     return tabela
 
 
-def plan_upcoming_days(sheet, wszystkie_dane, dzis):
+def pobierz_profil_fizjologiczny(client, dzis):
+    """Pobiera bazowe parametry fizjologiczne, strefy tętna i LTHR użytkownika."""
+    logger.info("Pobieranie profilu fizjologicznego (HRmax, LTHR, HRV bazowe, Strefy Z1-Z5)...")
+    dzis_str = dzis.strftime("%Y-%m-%d")
+    profil = {
+        "HRmax": "Brak danych",
+        "LTHR": "Brak danych",
+        "HRV_bazowe": "Brak danych",
+        "RHR_bazowe": "Brak danych",
+        "Z1": "Brak", "Z2": "Brak", "Z3": "Brak", "Z4": "Brak", "Z5": "Brak"
+    }
+
+    try:
+        summary = client.get_user_summary(dzis_str)
+        if summary and 'lastSevenDaysAvgRestingHeartRate' in summary:
+            profil["RHR_bazowe"] = f"{summary['lastSevenDaysAvgRestingHeartRate']} bpm"
+    except Exception as e:
+        logger.warning(f"Nie udało się pobrać RHR bazowego: {e}")
+
+    try:
+        hrv = client.get_hrv_data(dzis_str)
+        if hrv and 'hrvSummary' in hrv:
+            baseline = hrv['hrvSummary'].get('baseline', {})
+            low = baseline.get('balancedLow')
+            upper = baseline.get('balancedUpper')
+            if low and upper:
+                profil["HRV_bazowe"] = f"{low} - {upper} ms"
+    except Exception as e:
+        logger.warning(f"Nie udało się pobrać HRV bazowego: {e}")
+
+    # Pobieranie stref tętna, LTHR i HRmax z wewnętrznego API Garmina
+    try:
+        zones_data = client.garth.client.get("connectapi", "/userprofile-service/userprofile/personal-information/hrZones").json()
+        
+        strefy_biegowe = None
+        for zone_profile in zones_data:
+            if zone_profile.get("sport") == "RUNNING":
+                strefy_biegowe = zone_profile
+                break
+        
+        if not strefy_biegowe and zones_data:
+            strefy_biegowe = zones_data[0]
+
+        if strefy_biegowe:
+            if "maxHeartRate" in strefy_biegowe:
+                profil["HRmax"] = f"{strefy_biegowe['maxHeartRate']} bpm"
+            if "lactateThresholdHeartRate" in strefy_biegowe:
+                profil["LTHR"] = f"{strefy_biegowe['lactateThresholdHeartRate']} bpm"
+            
+            hr_zones = strefy_biegowe.get("hrZones", [])
+            for z in hr_zones:
+                numer = z.get("zoneNumber")
+                min_hr = z.get("minHeartRate")
+                max_hr = z.get("maxHeartRate")
+                if numer and min_hr and max_hr:
+                    profil[f"Z{numer}"] = f"{min_hr}-{max_hr} bpm"
+
+    except Exception as e:
+        logger.warning(f"Nie udało się pobrać stref tętna (LTHR/HRmax): {e}")
+
+    wynik = (
+        f"HRmax: {profil['HRmax']}\n"
+        f"LTHR (Próg mleczanowy): {profil['LTHR']}\n"
+        f"HRV (wartość bazowa): {profil['HRV_bazowe']}\n"
+        f"RHR (Tętno spoczynkowe bazowe 7d): {profil['RHR_bazowe']}\n"
+        f"Strefa 1 (Z1 - Regeneracja): {profil['Z1']}\n"
+        f"Strefa 2 (Z2 - Baza tlenowa): {profil['Z2']}\n"
+        f"Strefa 3 (Z3 - Aerobowa): {profil['Z3']}\n"
+        f"Strefa 4 (Z4 - Progowa): {profil['Z4']}\n"
+        f"Strefa 5 (Z5 - Maksymalna/VO2max): {profil['Z5']}\n"
+    )
+    return wynik
+
+def plan_upcoming_days(sheet, wszystkie_dane, dzis, client):
     """Planuje kolejne 7 dni treningowych (Trener AI) na podstawie wskaźników fizjologicznych."""
     logger.info("Uruchamianie Trenera AI (planowanie kolejnych dni)...")
 
@@ -250,10 +323,11 @@ def plan_upcoming_days(sheet, wszystkie_dane, dzis):
         logger.error("Brak klucza GEMINI_API_KEY w pliku .env!")
         return
 
-    # Do analizy (tabela fizjologii, CSV dla LLM) bierzemy tylko ostatnie 42 wiersze —
-    # CTL jest liczone jako 42-dniowa średnia wykładnicza, więc potrzebuje całego tego okna.
-    # Wyszukiwanie miejsca na plan (poniżej) wciąż działa na całym arkuszu, bo potrzebuje
-    # prawdziwych numerów wierszy.
+    # Wywołanie nowej funkcji
+    profil_fizjologiczny = pobierz_profil_fizjologiczny(client, dzis)
+    logger.info(f"Pobrano profil fizjologiczny:\n{profil_fizjologiczny}")
+
+    # Do analizy (tabela fizjologii, CSV dla LLM) bierzemy tylko ostatnie 42 wiersze
     historia_do_analizy = wszystkie_dane[-42:]
 
     output = io.StringIO()
@@ -261,33 +335,70 @@ def plan_upcoming_days(sheet, wszystkie_dane, dzis):
     writer.writerows(historia_do_analizy)
     csv_string = output.getvalue()
 
-    try:
-        with open("strategia.txt", "r", encoding="utf-8") as f:
-            strategia = f.read()
-    except FileNotFoundError:
-        logger.error("Brak pliku strategia.txt!")
+    # --- NOWA LOGIKA: Dynamiczne wczytywanie strategii z folderu ./strategies ---
+    strategies_dir = "./strategies"
+    strategia_period = None
+    strategia_main = open(os.path.join(strategies_dir, "strategy_main.txt"), "r", encoding="utf-8").read()
+    
+    if not os.path.exists(strategies_dir):
+        logger.error(f"Brak folderu {strategies_dir}! Utwórz go i dodaj pliki strategii.")
         return
 
-    kolejne_7_dni = [(dzis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, 8)]
+    # Przeszukujemy pliki w poszukiwaniu odpowiedniego zakresu dat
+    for filename in os.listdir(strategies_dir):
+        if not filename.endswith(".txt"):
+            continue
+            
+        name_without_ext = filename[:-4]  # Usuwa ".txt"
+        parts = name_without_ext.split('-')
+        
+        if len(parts) == 2:
+            try:
+                # Parsowanie dat z nazwy pliku (format DD.MM.YYYY)
+                start_date = datetime.strptime(parts[0], "%d.%m.%Y").date()
+                end_date = datetime.strptime(parts[1], "%d.%m.%Y").date()
+                
+                # Sprawdzenie, czy "dzis" mieści się w zakresie z nazwy pliku
+                if start_date <= dzis <= end_date:
+                    filepath = os.path.join(strategies_dir, filename)
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        strategia_period = f.read()
+                    logger.info(f"Wczytano strategię z pliku: {filename}")
+                    break  # Znaleziono pasujący plik, przerywamy pętlę
+            except ValueError:
+                logger.warning(f"Zignorowano plik o błędnym formacie daty: {filename}. Oczekiwany format: DD.MM.YYYY-DD.MM.YYYY.txt")
+                continue
 
-    # MAGIA DZIEJE SIĘ TUTAJ - wywołujemy kalkulator fizjologii
+    if not strategia_period:
+        logger.error(f"Brak pliku strategii dla dzisiejszej daty ({dzis.strftime('%d.%m.%Y')}) w folderze {strategies_dir}!")
+        return
+    # ----------------------------------------------------------------------------
+
+    kolejne_7_dni = [(dzis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(0, 7)]
+
+    # Wywołujemy kalkulator fizjologii
     tabela_wskaznikow = oblicz_fizjologie(historia_do_analizy, dzis)
 
     prompt = f"""
-    Jesteś profesjonalnym trenerem. Poniżej znajduje się moja ogólna strategia z konkretnymi ramami czasowymi:
-    {strategia}
+    Jesteś profesjonalnym trenerem. 
+    
+    [TWÓJ ZAWODNIK - PROFIL FIZJOLOGICZNY]
+    Poniżej znajdują się moje bazowe, bezwzględne parametry wysiłkowe:
+    {profil_fizjologiczny}
+
+    [TWÓJ ZAWODNIK - OBECNA STRATEGIA TRENINGOWA]
+    Poniżej znajduje się moja ogólna strategia:
+    {strategia_main}
+
+    [TWÓJ ZAWODNIK - STRATEGIA TRENINGOWA NA DANY OKRES]
+    Poniżej znajduje się moja szczegółowa strategia:
+    {strategia_period}
 
     To są moje matematycznie wyliczone wskaźniki fizjologiczne na stan dzisiejszy (trendy długoterminowe):
     {tabela_wskaznikow}
 
     A oto pełny zrzut mojego dziennika treningowego z ostatnich 30 dni w formacie CSV:
     {csv_string}
-
-    [KRYTYCZNA HIERARCHIA ANALIZY DANYCH]
-    Przed ułożeniem planu, musisz przeanalizować dane w następującej kolejności:
-    1. ZDROWIE I REGENERACJA (PRIORYTET ABSOLUTNY): Przeanalizuj w pliku CSV wyłącznie ostatnie 3 do 5 dni. Szukaj anomalii w kolumnach HRV (nagły spadek), RHR (nagły wzrost) oraz 'Body Battery' i 'Stress'. 
-    2. Jeśli zauważysz sygnały infekcji, silnego stresu układu nerwowego lub braku regeneracji z ostatnich 48-72h, ZIGNORUJ długoterminowe wskaźniki TSB/CTL z tabelki. Wprowadź tryb awaryjny (REST lub ekstremalnie lekkie Z1), niezależnie od tego, co mówi kalendarz i strategia.
-    3. Jeśli parametry dzienne z CSV są stabilne, przejdź do tabeli wskaźników fizjologicznych (CTL, ATL, TSB, ACWR), aby ocenić ogólną formę i zaplanować obciążenia zgodnie ze strategią.
 
     Twoim zadaniem jest zaplanować mi treningi na kolejne 7 dni, od {kolejne_7_dni[0]} do {kolejne_7_dni[-1]}.
 
@@ -650,7 +761,7 @@ def main():
 
     # Po zsynchronizowaniu danych z Garmina, planujemy kolejne 7 dni na podstawie
     # zaktualizowanych wskaźników fizjologicznych (ten sam sheet/wszystkie_dane, bez ponownego odczytu).
-    plan_upcoming_days(sheet, wszystkie_dane, dzis)
+    plan_upcoming_days(sheet, wszystkie_dane, dzis, client)
 
 if __name__ == "__main__":
     main()
