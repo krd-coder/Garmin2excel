@@ -29,20 +29,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Write Google service-account credentials
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: echo "$GOOGLE_CREDENTIALS" > credentials.json
-
       - name: Decode and unpack strategies
         run: |
           echo "${{ secrets.STRATEGIES_ZIP_B64 }}" | base64 --decode > strategies.zip
           unzip strategies.zip
+          
       - name: Setup credentials.json
         run: |
           cat << 'EOF' > credentials.json
           ${{ secrets.GCP_CREDENTIALS }}
           EOF
+          
       - name: Run sync + planner
         env:
           GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
