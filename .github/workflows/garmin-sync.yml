@@ -46,4 +46,6 @@ jobs:
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          INPUT_LANGUAGE: ${{ secrets.INPUT_LANGUAGE }}
+          OUTPUT_LANGUAGE: ${{ secrets.OUTPUT_LANGUAGE }}
         run: python main.py
