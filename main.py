@@ -423,13 +423,6 @@ def plan_upcoming_days(sheet, all_data, today, client):
 
     If you modify the plan for a given training - add a comment regarding the reason for the change (e.g. "Pace changed from 4:30 to 4:15 due to improved form").
     If there is no need to change the plan for a given day, leave it COMPLETELY unchanged.
-
-    CRITICAL REQUIREMENT: Return the result EXCLUSIVELY as a raw JSON written in the {output_language} language.
-    The JSON structure must look EXACTLY like this:
-    {{
-        "{next_7_days[0]}": {{"type": "Short name (e.g. Intervals)", "description": "Detailed description (e.g. 5x1km pace 4:00)"}},
-        ...
-    }}
     """
 
     logger.info("Sending integrated data (with metrics table) to Google API...")
