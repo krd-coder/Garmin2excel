@@ -44,3 +44,14 @@ GEMINI_API_KEY=<API key to your Gemini API from Google Cloud>
 In the main directory create a folder called `strategies/`. There you can create strategies for any time period by naming files `dd.mm.yyyy-dd.mm.yyyy.txt` and inserting a prompt for that period there. You can also insert a main strategy that will be inputed before the detailed period strategy into the prompt to the file `strategies/strategy_main.txt`. 
 
 It is advised to specify in the main strategy how the model should interprete the data - it is fed last 50 days from your sheet alongside a lot of your health statistics from garmin so you should specify which parameters it should base the training plan on.
+
+## 6. Automatic Updates
+You can use github actions to automate the entire process as the script is quite lightweight. In order to do so:
+1. Copy the repository.
+2. In your private copy of the repo go to Settings -> Secrets and variables -> actions -> Repository secrets.
+3. Add there all the .evn variables.
+4. Add a variable called `GCP_CREDENTIALS` and insert the entire contents of `credentials.json` there.
+5. Use `spakuj.py` to pack your strategies into Base64 format.
+6. Add a variable called `STRATEGIES_ZIP_B64` and insert the entire contents of `strategies_b64.txt` there.
+
+The script will run automaticaly everyday at 2:00AM. You can test it by running it manually in Actions tab or change the time of the update in `.github\workflows\garmin-sync.yml`.

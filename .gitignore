@@ -8,6 +8,8 @@ venv/
 credentials.json
 garmin_state.json
 .strategies/
+strategies_b64.txt
+strategies.zip
 
 # Python
 __pycache__/
