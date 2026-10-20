@@ -1,6 +1,6 @@
 # Garmin to Google Sheets AI Training Planner
 
-Tool connecting your Garmin account to Google Sheets, allowing you to monitor and analyze your data precisely. It also proposes trainings for today and future 6 days based on given strategies for each mezocycle using the latest Gemini-Flash model via Google Cloud API.
+Tool connecting your Garmin account to Google Sheets, allowing you to monitor and analyze your data precisely. It also proposes trainings for today and future 6 days based on given strategies for each mezocycle using the latest Gemini-Flash model via Google Cloud API and dumps the training plan to intervals.icu calendar to allow viewing trainings directly on garmin watch.
 
 ## 1. Google Cloud Setup (`credentials.json`)
 To allow the script to read and modify your spreadsheet, you need to create a Service Account in Google Cloud.
@@ -25,7 +25,13 @@ To allow the script to read and modify your spreadsheet, you need to create a Se
 4. Select the Google Cloud project you created in Step 1.
 5. Copy the generated API key.
 
-## 3. Environmental Variables
+## 3. Intervals.icu Setup
+1. Login into your account.
+2. Go to Setting and scroll down to Developer Settings.
+3. Generate API key.
+4. Copy both the API key and user ID.
+
+## 4. Environmental Variables
 In the main directory, create a file named `.env` and put the following variables:
 
 ```env
@@ -33,9 +39,11 @@ GARMIN_EMAIL=<your garmin account email>
 GARMIN_PASSWORD=<your garmin account password>
 SHEET_ID=<ID of the google sheet you want to use as your training plan - can be found at the end of the sheet link>
 GEMINI_API_KEY=<API key to your Gemini API from Google Cloud>
+INTERVALS_API_KEY=<your intervals.icu API key>
+INTERVALS_ATHLETE_ID=<your intervals.icu user ID>
 ```
 
-## 4. Sheet Configuration
+## 5. Sheet Configuration
 * Rows 1-3 won't affect the script - those are for your header. 
 * Column A is for the activity ID, you can hide it as it's not necessary. 
 * In Column B you need to insert dates starting from today and at least 7 days ahead for the tool to plan your trainings. Dates should be in the format `yyyy-mm-dd`.
@@ -43,15 +51,15 @@ GEMINI_API_KEY=<API key to your Gemini API from Google Cloud>
   <img width="1797" height="474" alt="image" src="https://github.com/user-attachments/assets/d34e01e6-2d76-461e-9a46-fb83b99e668b" />
   This is an example setup - first three rows are for you to customize :)
 
-## 5. Strategies
+## 6. Strategies
 In the main directory create a folder called `strategies/`. There you can create strategies for any time period by naming files `dd.mm.yyyy-dd.mm.yyyy.txt` and inserting a prompt for that period there. You can also insert a main strategy that will be inputed before the detailed period strategy into the prompt to the file `strategies/strategy_main.txt`. 
 
 It is advised to specify in the main strategy how the model should interprete the data - it is fed last 30 days from your sheet alongside a lot of your health statistics from garmin so you should specify which parameters it should base the training plan on.
 
-## 6. Language
+## 7. Language
 For best performance, strategies should be written in English. If you want to use different language for strategies (INPUT) or your training plan (OUTPUT), add LANGUAGE_INPUT=<your_language> to .env. If you don't set up the custom language, english will be used.
 
-## 7. Automatic Updates
+## 8. Automatic Updates
 You can use github actions to automate the entire process as the script is quite lightweight. In order to do so:
 1. Copy the repository.
 2. In your private copy of the repo go to Settings -> Secrets and variables -> actions -> Repository secrets.
