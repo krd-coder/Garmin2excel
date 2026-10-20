@@ -36,9 +36,12 @@ GEMINI_API_KEY=<API key to your Gemini API from Google Cloud>
 ```
 
 ## 4. Sheet Configuration
-* Rows 1-3 will be empty - those are for your header. 
+* Rows 1-3 won't affect the script - those are for your header. 
 * Column A is for the activity ID, you can hide it as it's not necessary. 
 * In Column B you need to insert dates starting from today and at least 7 days ahead for the tool to plan your trainings. Dates should be in the format `yyyy-mm-dd`.
+* Data in the sheet is represented as follows:
+  <img width="1797" height="474" alt="image" src="https://github.com/user-attachments/assets/d34e01e6-2d76-461e-9a46-fb83b99e668b" />
+  This is an example setup - first three rows are for you to customize :)
 
 ## 5. Strategies
 In the main directory create a folder called `strategies/`. There you can create strategies for any time period by naming files `dd.mm.yyyy-dd.mm.yyyy.txt` and inserting a prompt for that period there. You can also insert a main strategy that will be inputed before the detailed period strategy into the prompt to the file `strategies/strategy_main.txt`. 
