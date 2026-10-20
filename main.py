@@ -18,6 +18,11 @@ from garminconnect import (
 
 dotenv.load_dotenv()
 
+# ---------------------------------------------------------------------------
+# Intervals.icu integration
+# ---------------------------------------------------------------------------
+INTERVALS_API_BASE = "https://intervals.icu/api/v1"
+
 days_back_to_fetch = 5  # Number of days back to fetch data from Garmin
 
 logging.basicConfig(level=logging.INFO)
@@ -271,35 +276,54 @@ def fetch_physiological_profile(client, today):
     except Exception as e:
         logger.warning(f"Failed to fetch baseline HRV: {e}")
 
-    # Fetch HR zones, LTHR, and HRmax from internal Garmin API
+    # Fetch HR zones via garminconnect public API
     try:
-        zones_data = client.garth.client.get("connectapi", "/userprofile-service/userprofile/personal-information/hrZones").json()
-        
-        running_zones = None
+        zones_data = client.get_heart_rate_zones()
+
+        # Prefer RUNNING profile; fall back to DEFAULT
+        chosen = None
         for zone_profile in zones_data:
             if zone_profile.get("sport") == "RUNNING":
-                running_zones = zone_profile
+                chosen = zone_profile
                 break
-        
-        if not running_zones and zones_data:
-            running_zones = zones_data[0]
+        if not chosen:
+            for zone_profile in zones_data:
+                if zone_profile.get("sport") == "DEFAULT":
+                    chosen = zone_profile
+                    break
+        if not chosen and zones_data:
+            chosen = zones_data[0]
 
-        if running_zones:
-            if "maxHeartRate" in running_zones:
-                profile["HRmax"] = f"{running_zones['maxHeartRate']} bpm"
-            if "lactateThresholdHeartRate" in running_zones:
-                profile["LTHR"] = f"{running_zones['lactateThresholdHeartRate']} bpm"
-            
-            hr_zones = running_zones.get("hrZones", [])
-            for z in hr_zones:
-                number = z.get("zoneNumber")
-                min_hr = z.get("minHeartRate")
-                max_hr = z.get("maxHeartRate")
-                if number and min_hr and max_hr:
-                    profile[f"Z{number}"] = f"{min_hr}-{max_hr} bpm"
+        if chosen:
+            hr_max = chosen.get("maxHeartRateUsed") or chosen.get("maxHeartRate")
+            if hr_max:
+                profile["HRmax"] = f"{hr_max} bpm"
+
+            # Garmin returns flat keys: zone1Floor .. zone5Floor + maxHeartRateUsed
+            floors = []
+            for zn in range(1, 6):
+                floor = chosen.get(f"zone{zn}Floor")
+                if floor is not None:
+                    floors.append((zn, floor))
+
+            for i, (zn, floor_hr) in enumerate(floors):
+                if i + 1 < len(floors):
+                    ceiling = floors[i + 1][1] - 1
+                else:
+                    ceiling = hr_max or floor_hr
+                profile[f"Z{zn}"] = f"{floor_hr}-{ceiling} bpm"
 
     except Exception as e:
-        logger.warning(f"Failed to fetch heart rate zones (LTHR/HRmax): {e}")
+        logger.warning(f"Failed to fetch heart rate zones (HRmax): {e}")
+
+    # Fetch LTHR via garminconnect public API
+    try:
+        lt_data = client.get_lactate_threshold(latest=True)
+        lt_hr = lt_data.get("speed_and_heart_rate", {}).get("heartRate")
+        if lt_hr:
+            profile["LTHR"] = f"{lt_hr} bpm"
+    except Exception as e:
+        logger.warning(f"Failed to fetch lactate threshold (LTHR): {e}")
 
     result = (
         f"HRmax: {profile['HRmax']}\n"
@@ -503,6 +527,94 @@ def plan_upcoming_days(sheet, all_data, today, client):
             all_data.append(new_row)
 
     logger.info("Plan updated with mathematical models is now in the Sheet!")
+
+    # Sync the generated plan to Intervals.icu calendar
+    sync_plan_to_intervals(generated_plan)
+
+
+def sync_plan_to_intervals(generated_plan):
+    """
+    Sends the AI-generated training plan to Intervals.icu calendar.
+    Each day is created as a WORKOUT event (or NOTE for rest days).
+    Existing events created by this script (matched by name prefix) are
+    updated via PUT; otherwise a new event is created via POST.
+    """
+    api_key = os.getenv("INTERVALS_API_KEY")
+    athlete_id = os.getenv("INTERVALS_ATHLETE_ID", "0")
+
+    if not api_key:
+        logger.warning("INTERVALS_API_KEY not set — skipping Intervals.icu sync.")
+        return
+
+    session = requests.Session()
+    session.auth = ("API_KEY", api_key)
+    session.headers.update({"Content-Type": "application/json"})
+
+    base_url = f"{INTERVALS_API_BASE}/athlete/{athlete_id}"
+
+    plan_dates = sorted(generated_plan.keys())
+    if not plan_dates:
+        logger.info("Empty plan — nothing to sync to Intervals.icu.")
+        return
+
+    oldest = plan_dates[0]
+    newest = plan_dates[-1]
+
+    # 1. Fetch existing events in the date range so we can update instead of duplicating
+    existing_events = {}
+    try:
+        resp = session.get(
+            f"{base_url}/events",
+            params={"oldest": oldest, "newest": newest},
+        )
+        resp.raise_for_status()
+        for ev in resp.json():
+            # Match events previously created by this script (name starts with "[AI]")
+            name = ev.get("name", "")
+            ev_date = (ev.get("start_date_local") or "")[:10]
+            if name.startswith("[AI]") and ev_date:
+                existing_events[ev_date] = ev
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"Could not fetch existing Intervals.icu events: {e}")
+        # Continue anyway — we'll just create new events
+
+    # 2. Upsert each day of the plan
+    for plan_date, plan_data in generated_plan.items():
+        plan_type = plan_data.get("type", "REST")
+        description = plan_data.get("description", "-")
+
+        is_rest = plan_type.upper() in ("REST", "ODPOCZYNEK", "DZIEŃ WOLNY", "REGENERACJA")
+        category = "NOTE" if is_rest else "WORKOUT"
+        sport_type = "Run"  # Default sport type for an orienteering runner
+
+        event_name = f"[AI] {plan_type}"
+
+        payload = {
+            "category": category,
+            "name": event_name,
+            "start_date_local": f"{plan_date}T00:00:00",
+            "description": description,
+        }
+        if not is_rest:
+            payload["type"] = sport_type
+
+        existing = existing_events.get(plan_date)
+
+        try:
+            if existing:
+                event_id = existing["id"]
+                resp = session.put(f"{base_url}/events/{event_id}", json=payload)
+                resp.raise_for_status()
+                logger.info(f"Intervals.icu: updated event {event_id} for {plan_date} → {plan_type}")
+            else:
+                resp = session.post(f"{base_url}/events", json=payload)
+                resp.raise_for_status()
+                new_id = resp.json().get("id", "?")
+                logger.info(f"Intervals.icu: created event {new_id} for {plan_date} → {plan_type}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Intervals.icu sync failed for {plan_date}: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response body: {e.response.text}")
 
 
 def main():

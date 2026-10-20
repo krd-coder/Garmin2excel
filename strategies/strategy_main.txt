@@ -18,12 +18,7 @@ Prewencja urazów (BnO): Kluczowe jest wzmacnianie stawu skokowego (skrócenie c
 
 Zasady Autoregulacji (Zarządzanie Zmęczeniem):
 
-Jeśli poranne HRV spadnie o >20% poniżej bazy (np. poniżej 50 ms) – całkowicie anulujemy zaplanowany na dany dzień trening biegowy, zastępując go pełnym odpoczynkiem lub lekkim rolowaniem powięzi.
-
-Jeśli na treningu regeneracyjnym (Z1/Z2) wskaźnik sRPE oceniam na >7/10 (odczuwam nieproporcjonalny wysiłek przy niskim tętnie) – w kolejnym dniu zamieniamy akcent na odpoczynek lub lekki trucht.
-
-Zjawisko supresji tętna (wysokie sRPE, brak możliwości wejścia na wysokie tętno Z4/Z5 podczas akcentu) jest bezwzględnym sygnałem do wdrożenia 2-dniowego odpoczynku od biegania.
-
+Każdego ranka oceniasz 3 parametry (HRV, RHR, samopoczucie) i przed treningiem wybierasz odpowiedni wariant z tabeli mezocyklu (Minimum / Optymalny / Maksymalny):Status GotowościWskaźniki Obiektywne i SubiektywneDziałanie Treningowe (Skalowanie)ZIELONY (Pełna adaptacja)$\text{HRV}$ w normie ($\pm 5\%$ od 61 ms) lub wyższe; $\text{RHR} \le 45\text{ bpm}$; niskie zmęczenie mięśniowe.   Realizujesz górne widełki czasu trwania i liczby powtórzeń w akcentach.ŻÓŁTY (Kumulacja zmęczenia)Spadek $\text{HRV}$ o $7\text{–}12\%$; $\text{RHR}$ podwyższone o $3\text{–}4\text{ bpm}$ ($48\text{–}49\text{ bpm}$); rosnące sRPE przy tym samym tętnie.   Realizujesz dolne widełki objętości (np. 4 powtórzenia zamiast 6, wybieganie krótsze o 15–20 min). Zachowujesz intensywność docelową, ale tniesz czas jej trwania.CZERWONY (Przeciążenie OUN)Spadek $\text{HRV}$ o kilkanaście procent ($>12\text{–}15\%$) od bazy; $\text{RHR} \ge 50\text{ bpm}$; lub niskie tętno na treningu przy skrajnie wysokim RPE (blokada układu współczulnego).   Bezwzględna rezygnacja z akcentu ($\text{Z4}/\text{Z5}$) na rzecz spokojnego biegu tlenowego w $\text{Z1}/\text{Z2}$ (max 45–50 min) lub całkowity dzień wolny.   Zalecana struktura falowania obciążeń w każdym mezocyklu: 3 tygodnie progresywnego budowania obciążenia TRIMP + 1 tydzień regeneracyjny (Deload), w którym ucinasz objętość o 30–40%, zostawiając jedynie krótkie pobudzenia intensywnościowe.
 [HIERARCHIA DECYZYJNA]
 Jeśli moje bieżące statystyki z Garmina (np. głęboki spadek HRV utrzymujący się przez 3 dni) sugerują wysokie ryzyko kontuzji/choroby, potraktuj ten sygnał jako NADRZĘDNY wobec zasad Mezocyklu. Zdrowie jest zawsze na 1. miejscu. Zmień wtedy najbliższe 2 dni na aktywną regenerację, niezależnie od tego, co dyktuje faza kalendarza
 
