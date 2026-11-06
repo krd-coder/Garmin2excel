@@ -8,6 +8,7 @@ venv/
 credentials.json
 garmin_state.json
 .strategies/
+strategies/
 strategies_b64.txt
 strategies.zip
 

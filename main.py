@@ -351,12 +351,13 @@ def plan_upcoming_days(sheet, all_data, today, client):
     physiological_profile = fetch_physiological_profile(client, today)
     logger.info(f"Fetched physiological profile:\n{physiological_profile}")
 
-    # For analysis (physiology table, CSV for LLM), we take only the last 42 rows
+    # Keep the last 42 rows for physiological metrics.
     history_to_analyze = all_data[-42:]
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerows(history_to_analyze)
+    # Send only the last 14 rows to Gemini.
+    writer.writerows(history_to_analyze[-14:])
     csv_string = output.getvalue()
 
     # --- NEW LOGIC: Dynamically loading strategies from the ./strategies folder ---
@@ -407,46 +408,62 @@ def plan_upcoming_days(sheet, all_data, today, client):
     output_language=os.getenv("OUTPUT_LANGUAGE", "English")
 
     prompt = f"""
-    You are a professional coach. 
-    
-    Below are my absolute, baseline physiological parameters:
-    [YOUR ATHLETE - PHYSIOLOGICAL PROFILE]
+    You are an elite, data-driven performance coach. Your role is to dynamically manage and adjust my 7-day training microcycle based on physiological telemetry, training execution, and my methodology.
+
+    <athlete_profile>
     {physiological_profile}
+    </athlete_profile>
 
-    
-    Below is my general strategy:
-    [YOUR ATHLETE - OVERALL TRAINING STRATEGY WRITTEN IN LANGUAGE: {input_language}]
+    <overall_strategy language="{input_language}">
     {strategy_main}
+    </overall_strategy>
 
-    Below is my detailed strategy for the current period:
-    [YOUR ATHLETE - PERIOD TRAINING STRATEGY WRITTEN IN LANGUAGE: {input_language}]
+    <period_strategy language="{input_language}">
     {strategy_period}
+    </period_strategy>
 
-    These are my mathematically calculated physiological metrics as of today (long-term trends):
+    <long_term_metrics_table>
     {physiology_table}
+    </long_term_metrics_table>
 
-    And here is the full dump of my training log from the last 30 days in CSV format:
-    [YOUR ATHLETE - TRAINING LOG CSV - WRITTEN IN LANGUAGE: {output_language}]
+    <recent_training_log_csv language="{output_language}">
     {csv_string}
+    </recent_training_log_csv>
 
-    Your task is to plan my trainings for the next 7 days, from {next_7_days[0]} to {next_7_days[-1]}.
+    <task_instructions>
+    Your task is to plan or update my training schedule for the next 7 days: from {next_7_days[0]} to {next_7_days[-1]}.
+    This script runs daily. Analyze the existing plan for these upcoming 7 days (if present in the log/context) and modify it ONLY where necessary to keep it aligned with my strategies and current physiological state.
 
-    [CRITICAL DATA ANALYSIS HIERARCHY]
-    Before generating the plan, you must analyze the data in the following order:
-    1. HEALTH AND RECOVERY (ABSOLUTE PRIORITY): Analyze ONLY the last 3 to 5 days in the CSV file. Look for anomalies in the HRV (sudden drop), RHR (sudden spike), and 'Body Battery' or 'Stress' columns. 
-    2. If you notice signs of infection, severe nervous system stress, or lack of recovery from the last 48-72h, IGNORE the long-term TSB/CTL metrics from the table. Enter emergency mode (REST or extremely light Z1), regardless of what the calendar and strategy dictate.
-    3. If daily parameters from the CSV are stable, proceed to the physiological metrics table (CTL, ATL, TSB, ACWR) to assess overall fitness and plan loads according to the strategy.
+    Follow this exact 4-step decision pipeline before generating the output:
 
-    CRITICAL REQUIREMENT: Return the result EXCLUSIVELY as a raw JSON written in the {output_language} language.
+    1. ACUTE READINESS & AUTOREGULATION (Last 1-3 days in CSV):
+    - Evaluate morning HRV, RHR, Sleep/Body Battery, Stress, and recent workout sRPE against the specific zones (GREEN / YELLOW / RED) and the "Anti-Panic Rule" defined in <overall_strategy>.
+    - Distinguish between a single-day anomaly (e.g., one sleepless night) and a multi-day negative trend (3+ days of suppressed HRV / elevated RHR / rising sRPE). Do NOT trigger multi-day full rest unless the strict criteria from <overall_strategy> are met.
+
+    2. RECENT EXECUTION & WORKLOAD CONTINUITY (Last 7-14 days in CSV):
+    - Check actual workout completion over the past 7-10 days.
+    - Compare completed workouts against the rules in <overall_strategy> and <period_strategy> (e.g., missed sessions, shortened volume, chronobiology compliance, ankle NMT frequency). Adjust upcoming workouts if compensation or deloading is required and permitted by current readiness.
+
+    3. MACRO LOAD & PROGRESSION (Physiology Table):
+    - Cross-reference CTL, ATL, TSB, and ACWR from <long_term_metrics_table> to ensure the weekly TRIMP/volume progression fits the current mesocycle goals without causing dangerous load spikes.
+
+    4. PLAN SYNTHESIS & STABILITY RULE:
+    - Apply modifications (scaling duration, repetitions, or swapping intensity) strictly according to the rules in <overall_strategy> and <period_strategy>.
+    - If you modify a previously planned workout for a given day, explicitly prepend or append a brief note in the description explaining the trigger (e.g., "[Zmiana: 4x1km zamiast 6x1km - strefa ŻÓŁTA, spadek HRV po zarwanej nocy]").
+    - If a planned workout for a given day is already optimal and requires no changes, leave it COMPLETELY unchanged.
+    </task_instructions>
+
+    <output_format>
+    CRITICAL REQUIREMENT: Return the result EXCLUSIVELY as a valid, raw JSON object written in the {output_language} language (no markdown formatting, no ```json wrappers, no introductory text).
     The JSON structure must look EXACTLY like this:
     {{
-        "{next_7_days[0]}": {{"type": "Short name (e.g. Intervals)", "description": "Detailed description (e.g. 5x1km pace 4:00)"}},
+        "{next_7_days[0]}": {{
+            "type": "Short workout name + Time of day (e.g., Rano: Rozbieganie Z1 / Popołudnie: NMT)",
+            "description": "Detailed execution parameters: duration, HR zones/pace, terrain, NMT/strength protocol, carb guidelines, and modification reason if changed."
+        }},
         ...
     }}
-    This script runs daily, so analyze the current plan for the upcoming 7 days and modify it if necessary to keep it aligned with my strategy and appropriate for my fatigue level.
-
-    If you modify the plan for a given training - add a comment regarding the reason for the change (e.g. "Pace changed from 4:30 to 4:15 due to improved form").
-    If there is no need to change the plan for a given day, leave it COMPLETELY unchanged.
+    </output_format>
     """
 
     logger.info("Sending integrated data (with metrics table) to Google API...")
