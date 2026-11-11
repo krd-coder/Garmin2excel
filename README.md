@@ -65,7 +65,7 @@ You can use github actions to automate the entire process as the script is quite
 2. In your private copy of the repo go to Settings -> Secrets and variables -> actions -> Repository secrets.
 3. Add there all the .evn variables.
 4. Add a variable called `GCP_CREDENTIALS` and insert the entire contents of `credentials.json` there.
-5. Use `pack_strategies.py` to pack your strategies into Base64 format.
+5. Create `strategies/strategy_main.txt` and your dated strategy files, then use `pack_strategies.py` to pack them into Base64 format. The archive contains the files without the parent folder; the workflow extracts them into `strategies/` and checks that `strategy_main.txt` exists before starting synchronization.
 6. Add a variable called `STRATEGIES_ZIP_B64` and insert the entire contents of `strategies_b64.txt` there.
 
 The script will run automaticaly everyday at 2:00AM. You can test it by running it manually in Actions tab or change the time of the update in `.github\workflows\garmin-sync.yml`.

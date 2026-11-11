@@ -32,7 +32,8 @@ jobs:
       - name: Decode and unpack strategies
         run: |
           echo "${{ secrets.STRATEGIES_ZIP_B64 }}" | base64 --decode > strategies.zip
-          unzip strategies.zip
+          unzip -o strategies.zip -d strategies
+          test -f strategies/strategy_main.txt || { echo "::error::Missing strategies/strategy_main.txt. Recreate STRATEGIES_ZIP_B64 with pack_strategies.py."; exit 1; }
           
       - name: Setup credentials.json
         run: |

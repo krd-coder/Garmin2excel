@@ -363,11 +363,17 @@ def plan_upcoming_days(sheet, all_data, today, client):
     # --- NEW LOGIC: Dynamically loading strategies from the ./strategies folder ---
     strategies_dir = "./strategies"
     strategy_period = None
-    strategy_main = open(os.path.join(strategies_dir, "strategy_main.txt"), "r", encoding="utf-8").read()
     
-    if not os.path.exists(strategies_dir):
+    if not os.path.isdir(strategies_dir):
         logger.error(f"Missing directory {strategies_dir}! Create it and add strategy files.")
         return
+
+    strategy_main_path = os.path.join(strategies_dir, "strategy_main.txt")
+    if not os.path.isfile(strategy_main_path):
+        logger.error(f"Missing main strategy file {strategy_main_path}! Create it before running the planner.")
+        return
+    with open(strategy_main_path, "r", encoding="utf-8") as f:
+        strategy_main = f.read()
 
     # Search files for the matching date range
     for filename in os.listdir(strategies_dir):
