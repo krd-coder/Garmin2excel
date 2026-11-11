@@ -438,9 +438,15 @@ def plan_upcoming_days(sheet, all_data, today, client):
 
     <task_instructions>
     Your task is to plan or update my training schedule for the next 7 days: from {next_7_days[0]} to {next_7_days[-1]}.
-    This script runs daily. Analyze the existing plan for these upcoming 7 days (if present in the log/context) and modify it ONLY where necessary to keep it aligned with my strategies and current physiological state.
+    This script runs daily. Analyze the existing plan for these upcoming 7 days (present in the CSV/context) and modify it ONLY where necessary to keep it aligned with my strategies and current physiological state.
 
-    Follow this exact 4-step decision pipeline before generating the output:
+    Follow this exact 5-step decision pipeline before generating the output:
+
+    0. USER-LOCKED EVENTS & HARD CONSTRAINTS ( "#" PREFIX - ABSOLUTE PRIORITY ):
+    - Scan the rows for the upcoming 7 days ({next_7_days[0]} to {next_7_days[-1]}) in <recent_training_log_csv>.
+    - Any day where the planned workout type or description starts with the "#" character (e.g., "# Zawody...", "# Brak czasu...", "# Wspólny trening...") is a HARD LOCK set by the athlete.
+    - YOU MUST NOT remove, overwrite, or change the core nature of a "#" entry, even in RED readiness status. Keep the "#" prefix intact in the output JSON.
+    - Treat "#" entries as fixed anchor points and dynamically reorganize the surrounding unlocked days around them (e.g., apply tapering/activation before "# Zawody", or shift the weekly rest day / key workouts if a day is locked as "# Wolne / Brak czasu").
 
     1. ACUTE READINESS & AUTOREGULATION (Last 1-3 days in CSV):
     - Evaluate morning HRV, RHR, Sleep/Body Battery, Stress, and recent workout sRPE against the specific zones (GREEN / YELLOW / RED) and the "Anti-Panic Rule" defined in <overall_strategy>.
@@ -448,14 +454,15 @@ def plan_upcoming_days(sheet, all_data, today, client):
 
     2. RECENT EXECUTION & WORKLOAD CONTINUITY (Last 7-14 days in CSV):
     - Check actual workout completion over the past 7-10 days.
-    - Compare completed workouts against the rules in <overall_strategy> and <period_strategy> (e.g., missed sessions, shortened volume, chronobiology compliance, ankle NMT frequency). Adjust upcoming workouts if compensation or deloading is required and permitted by current readiness.
+    - Compare completed workouts against the rules in <overall_strategy> and <period_strategy> (e.g., missed sessions, shortened volume, chronobiology compliance, ankle NMT frequency). Adjust upcoming UNLOCKED workouts if compensation or deloading is required and permitted by current readiness.
 
     3. MACRO LOAD & PROGRESSION (Physiology Table):
     - Cross-reference CTL, ATL, TSB, and ACWR from <long_term_metrics_table> to ensure the weekly TRIMP/volume progression fits the current mesocycle goals without causing dangerous load spikes.
 
     4. PLAN SYNTHESIS & STABILITY RULE:
-    - Apply modifications (scaling duration, repetitions, or swapping intensity) strictly according to the rules in <overall_strategy> and <period_strategy>.
-    - If you modify a previously planned workout for a given day, explicitly prepend or append a brief note in the description explaining the trigger (e.g., "[Zmiana: 4x1km zamiast 6x1km - strefa ŻÓŁTA, spadek HRV po zarwanej nocy]").
+    - Apply modifications (scaling duration, repetitions, or swapping intensity) strictly to UNLOCKED days according to the rules in <overall_strategy> and <period_strategy>.
+    - If a "#" locked entry is minimal (e.g., just "# Zawody BnO"), keep the "type" starting with "#" unchanged, and only enrich the "description" with appropriate warm-up, pacing, or carb-loading guidelines without altering the user's intent.
+    - If you modify a previously planned unlocked workout, explicitly prepend or append a brief note in the description explaining the trigger (e.g., "[Zmiana: Przesunięcie akcentu z czwartku na środę z powodu blokady # w czwartek]").
     - If a planned workout for a given day is already optimal and requires no changes, leave it COMPLETELY unchanged.
     </task_instructions>
 
@@ -464,7 +471,7 @@ def plan_upcoming_days(sheet, all_data, today, client):
     The JSON structure must look EXACTLY like this:
     {{
         "{next_7_days[0]}": {{
-            "type": "Short workout name + Time of day (e.g., Rano: Rozbieganie Z1 / Popołudnie: NMT)",
+            "type": "Short workout name + Time of day (keep '#' at the start if locked!)",
             "description": "Detailed execution parameters: duration, HR zones/pace, terrain, NMT/strength protocol, carb guidelines, and modification reason if changed."
         }},
         ...
